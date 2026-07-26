@@ -75,6 +75,17 @@ struct ManualImportView: View {
             .keyboardShortcut(.return, modifiers: [.command])
             .disabled(!model.canScan)
 
+            if model.shouldOfferSelectedSourceEjection {
+                Button {
+                    model.ejectSelectedSource()
+                } label: {
+                    Label(model.selectedSourceEjectionButtonTitle, systemImage: "eject.fill")
+                }
+                .buttonStyle(.bordered)
+                .disabled(!model.canEjectSelectedSource)
+                .accessibilityHint("Safely unmounts all storage volumes on the selected source device")
+            }
+
             if model.isWorking {
                 Button {
                     model.cancelImport()
@@ -210,11 +221,17 @@ private struct SourceField: View {
 
                     if !model.availableSourceVolumes.isEmpty {
                         Section("Mounted Cards") {
-                            ForEach(model.availableSourceVolumes) { volume in
-                                Button {
-                                    model.selectSourceVolume(volume)
-                                } label: {
-                                    Text(volume.menuTitle)
+                            ForEach(model.availableSourceDeviceGroups) { group in
+                                ForEach(group.volumes) { volume in
+                                    Button {
+                                        model.selectSourceVolume(volume)
+                                    } label: {
+                                        Text(
+                                            volume.menuTitle(
+                                                deviceName: group.isMultiVolume ? group.displayName : nil
+                                            )
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -306,11 +323,17 @@ private struct SourceField: View {
 }
 
 private extension MountedVolume {
-    var menuTitle: String {
-        if let capacityText {
-            return "\(name) · \(capacityText)"
+    func menuTitle(deviceName: String?) -> String {
+        let identity = if let deviceName {
+            "\(name) · \(deviceName)"
+        } else {
+            name
         }
-        return name
+
+        if let capacityText {
+            return "\(identity) · \(capacityText)"
+        }
+        return identity
     }
 
     var detailText: String {

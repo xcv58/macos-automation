@@ -49,6 +49,29 @@ struct ImportPreviewSpaceRequirement: Identifiable, Hashable {
     }
 }
 
+private struct SourceEjectionTarget: Sendable {
+    let displayName: String
+    let volumes: [MountedVolume]
+    let ejectionVolumes: [MountedVolume]
+
+    var volumeCount: Int {
+        volumes.count
+    }
+}
+
+private struct SourceDeviceEjectionError: LocalizedError {
+    let failedVolumeName: String
+    let ejectedVolumeNames: [String]
+    let message: String
+
+    var errorDescription: String? {
+        if ejectedVolumeNames.isEmpty {
+            return "\(failedVolumeName) remains mounted: \(message)"
+        }
+        return "\(ejectedVolumeNames.joined(separator: ", ")) ejected, but \(failedVolumeName) remains mounted: \(message)"
+    }
+}
+
 struct RecentPathSuggestion: Identifiable {
     var id: String { choice.path }
     let choice: RecentPathChoice
@@ -174,6 +197,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var isEjectingSource = false
     @Published private(set) var ejectedSourceJobID: String?
     @Published private(set) var ejectedSourceName: String?
+    @Published private(set) var ejectedSourceVolumeCount = 0
     @Published var setupError: String?
 
     private let defaults = UserDefaults.standard
@@ -368,6 +392,57 @@ final class AppModel: ObservableObject {
         rebuildRecentImportSuggestions()
     }
 
+    var availableSourceDeviceGroups: [MountedDeviceGroup] {
+        MountedDeviceGrouper().groups(from: availableSourceVolumes)
+    }
+
+    func sourceDeviceGroup(containing volume: MountedVolume) -> MountedDeviceGroup {
+        MountedDeviceGrouper().group(containing: volume, among: availableSourceVolumes)
+    }
+
+    var shouldOfferSelectedSourceEjection: Bool {
+        selectedMountedSourceVolume != nil
+    }
+
+    var canEjectSelectedSource: Bool {
+        !isWorking
+            && !isEjectingSource
+            && selectedMountedSourceVolume != nil
+    }
+
+    var selectedSourceEjectionButtonTitle: String {
+        guard !isEjectingSource else {
+            return "Ejecting Source…"
+        }
+        guard let sourceVolume = selectedMountedSourceVolume else {
+            return "Eject Source"
+        }
+        let group = sourceDeviceGroup(containing: sourceVolume)
+        if group.isMultiVolume {
+            return "Eject \(group.displayName) — \(group.volumes.count) Volumes"
+        }
+        return "Eject \(sourceVolume.name)"
+    }
+
+    func ejectSelectedSource() {
+        guard !isWorking, !isEjectingSource, let target = selectedSourceEjectionTarget() else {
+            statusMessage = "Source cannot be ejected safely"
+            return
+        }
+
+        let sourceJobID: String
+        if
+            let summary = currentSummary,
+            URL(fileURLWithPath: summary.mountPath, isDirectory: true).standardizedFileURL
+                == URL(fileURLWithPath: cardPath, isDirectory: true).standardizedFileURL
+        {
+            sourceJobID = summary.jobID
+        } else {
+            sourceJobID = "manual-\(target.volumes.map(\.id).sorted().joined(separator: "-"))"
+        }
+        ejectSource(jobID: sourceJobID, target: target)
+    }
+
     func selectSourceVolume(_ volume: MountedVolume) {
         selectSourcePath(volume.mountURL.path)
     }
@@ -443,6 +518,7 @@ final class AppModel: ObservableObject {
         importProgress = nil
         ejectedSourceJobID = nil
         ejectedSourceName = nil
+        ejectedSourceVolumeCount = 0
         previewSessions = []
         clearPreviewPlanCache()
         selectedJobFiles = []
@@ -524,6 +600,7 @@ final class AppModel: ObservableObject {
         importProgress = nil
         ejectedSourceJobID = nil
         ejectedSourceName = nil
+        ejectedSourceVolumeCount = 0
         previewSessions = []
         currentPreviewFiles = []
         clearPreviewPlanCache()
@@ -1019,6 +1096,7 @@ final class AppModel: ObservableObject {
         importProgress = nil
         ejectedSourceJobID = nil
         ejectedSourceName = nil
+        ejectedSourceVolumeCount = 0
         statusMessage = "Preparing import..."
         importLogger.info("Import started jobID=\(jobID, privacy: .private)")
 
@@ -1561,70 +1639,50 @@ final class AppModel: ObservableObject {
         if ejectedSourceJobID == result.jobID {
             return ejectedSourceName
         }
-        return sourceEjectionTarget(for: result)?.lastPathComponent
+        return sourceEjectionTarget(for: result)?.displayName
+    }
+
+    func sourceEjectionVolumeCount(for result: ImportResult) -> Int {
+        if ejectedSourceJobID == result.jobID {
+            return ejectedSourceVolumeCount
+        }
+        return sourceEjectionTarget(for: result)?.volumeCount ?? 1
     }
 
     func ejectSource(for result: ImportResult) {
-        guard !isEjectingSource, let targetURL = sourceEjectionTarget(for: result) else {
+        guard !isEjectingSource, let target = sourceEjectionTarget(for: result) else {
             statusMessage = "Source cannot be ejected safely"
             return
         }
 
-        ejectSource(jobID: result.jobID, targetURL: targetURL)
+        ejectSource(jobID: result.jobID, target: target)
     }
 
-    func shouldOfferSourceEjection(for summary: ScanSummary) -> Bool {
-        guard previewTotals.copyFiles == 0 else {
-            return false
-        }
-        guard ejectedSourceJobID != summary.jobID else {
-            return true
-        }
-        return sourceEjectionTarget(for: summary) != nil
-    }
-
-    func canEjectSource(for summary: ScanSummary) -> Bool {
-        !isEjectingSource
-            && ejectedSourceJobID != summary.jobID
-            && sourceEjectionTarget(for: summary) != nil
-    }
-
-    func sourceEjectionDisplayName(for summary: ScanSummary) -> String? {
-        if ejectedSourceJobID == summary.jobID {
-            return ejectedSourceName
-        }
-        return sourceEjectionTarget(for: summary)?.lastPathComponent
-    }
-
-    func ejectSource(for summary: ScanSummary) {
-        guard !isEjectingSource, let targetURL = sourceEjectionTarget(for: summary) else {
-            statusMessage = "Source cannot be ejected safely"
-            return
-        }
-
-        ejectSource(jobID: summary.jobID, targetURL: targetURL)
-    }
-
-    private func ejectSource(jobID: String, targetURL: URL) {
+    private func ejectSource(jobID: String, target: SourceEjectionTarget) {
         isEjectingSource = true
-        statusMessage = "Ejecting source..."
+        statusMessage = target.volumeCount > 1
+            ? "Ejecting \(target.displayName) storage..."
+            : "Ejecting source..."
         sourceEjectionTask?.cancel()
         sourceEjectionTask = Task { [weak self] in
             guard let self else {
                 return
             }
             do {
-                try await Self.ejectDevice(at: targetURL)
+                try await Self.ejectDevice(target)
                 guard !Task.isCancelled else {
                     return
                 }
-                self.ejectedSourceName = targetURL.lastPathComponent
+                self.ejectedSourceName = target.displayName
+                self.ejectedSourceVolumeCount = target.volumeCount
                 self.ejectedSourceJobID = jobID
                 self.isEjectingSource = false
                 self.sourceEjectionTask = nil
                 self.refreshAvailableSourceVolumes()
                 self.validatePaths()
-                self.statusMessage = "Source ejected safely"
+                self.statusMessage = target.volumeCount > 1
+                    ? "\(target.displayName) ejected safely"
+                    : "Source ejected safely"
             } catch is CancellationError {
                 self.isEjectingSource = false
                 self.sourceEjectionTask = nil
@@ -2044,12 +2102,15 @@ final class AppModel: ObservableObject {
                 let self,
                 self.autoPromptEnabled,
                 self.hasCompletedOnboarding,
-                !self.isWorking,
-                self.pendingMountedVolume == nil
+                !self.isWorking
             else {
                 return
             }
 
+            self.refreshAvailableSourceVolumes()
+            guard self.pendingMountedVolume == nil else {
+                return
+            }
             self.pendingMountedVolume = volume
             self.statusMessage = "Card detected"
         }
@@ -2092,7 +2153,7 @@ final class AppModel: ObservableObject {
         return detector.isLikelyImportVolume(volume) ? volume : nil
     }
 
-    private func sourceEjectionTarget(for result: ImportResult) -> URL? {
+    private func sourceEjectionTarget(for result: ImportResult) -> SourceEjectionTarget? {
         guard
             let job = jobs.first(where: { $0.id == result.jobID }),
             let volume = Self.mountedSourceVolume(containing: job.mountPath),
@@ -2100,27 +2161,113 @@ final class AppModel: ObservableObject {
         else {
             return nil
         }
-        return volume.mountURL
+        return sourceEjectionTarget(
+            sourceVolume: volume,
+            destinationPaths: [job.photosRoot, job.videosRoot]
+        )
     }
 
-    private func sourceEjectionTarget(for summary: ScanSummary) -> URL? {
+    private func sourceEjectionTarget(
+        sourceVolume: MountedVolume,
+        destinationPaths: [String]
+    ) -> SourceEjectionTarget? {
+        let detector = VolumeDetector()
+        let mountedVolumes = detector.allMountedVolumes()
+        let grouper = MountedDeviceGrouper()
+        let group = grouper.group(containing: sourceVolume, among: mountedVolumes)
+        let ejectionVolumes = grouper.ejectionVolumes(for: sourceVolume, among: mountedVolumes)
         guard
-            currentSummary?.jobID == summary.jobID,
-            let volume = Self.mountedSourceVolume(containing: summary.mountPath),
-            SourceEjectionPolicy().canEjectAfterScan(
-                summary: summary,
-                plannedCopyFiles: previewTotals.copyFiles,
-                volume: volume
-            )
+            !ejectionVolumes.isEmpty,
+            !destinationPaths.contains(where: {
+                Self.destination($0, sharesDeviceWith: group.volumes)
+            })
         else {
             return nil
         }
-        return volume.mountURL
+
+        return SourceEjectionTarget(
+            displayName: group.isMultiVolume ? group.displayName : sourceVolume.name,
+            volumes: group.volumes,
+            ejectionVolumes: ejectionVolumes
+        )
     }
 
-    nonisolated private static func ejectDevice(at url: URL) async throws {
+    private func selectedSourceEjectionTarget() -> SourceEjectionTarget? {
+        guard let sourceVolume = selectedMountedSourceVolume else {
+            return nil
+        }
+        return sourceEjectionTarget(sourceVolume: sourceVolume, destinationPaths: [])
+    }
+
+    private var selectedMountedSourceVolume: MountedVolume? {
+        let sourcePath = URL(fileURLWithPath: expanded(cardPath), isDirectory: true)
+            .standardizedFileURL.path
+        return availableSourceVolumes.first { volume in
+            let mountPath = volume.mountURL.standardizedFileURL.path
+            return sourcePath == mountPath || sourcePath.hasPrefix(mountPath + "/")
+        }
+    }
+
+    nonisolated private static func destination(
+        _ destinationPath: String,
+        sharesDeviceWith sourceVolumes: [MountedVolume]
+    ) -> Bool {
+        var destinationURL = URL(fileURLWithPath: destinationPath, isDirectory: true).standardizedFileURL
+        while
+            !FileManager.default.fileExists(atPath: destinationURL.path),
+            destinationURL.path != "/"
+        {
+            destinationURL.deleteLastPathComponent()
+        }
+        guard
+            let values = try? destinationURL.resourceValues(forKeys: [.volumeURLKey]),
+            let volumeURL = values.volume
+        else {
+            return false
+        }
+
+        let destinationVolume = VolumeDetector().mountedVolume(from: volumeURL)
+        return sourceVolumes.contains { sourceVolume in
+            if
+                let sourceDevice = sourceVolume.deviceGroupIdentifier,
+                let destinationDevice = destinationVolume.deviceGroupIdentifier
+            {
+                return sourceDevice == destinationDevice
+            }
+            if
+                let sourceDisk = sourceVolume.wholeDiskIdentifier,
+                let destinationDisk = destinationVolume.wholeDiskIdentifier
+            {
+                return sourceDisk == destinationDisk
+            }
+            if
+                let sourceUUID = sourceVolume.volumeUUID,
+                let destinationUUID = destinationVolume.volumeUUID
+            {
+                return sourceUUID == destinationUUID
+            }
+            return false
+        }
+    }
+
+    nonisolated private static func ejectDevice(_ target: SourceEjectionTarget) async throws {
         try await Task.detached(priority: .userInitiated) {
-            try NSWorkspace.shared.unmountAndEjectDevice(at: url)
+            var ejectedVolumeNames: [String] = []
+            for volume in target.ejectionVolumes {
+                guard FileManager.default.fileExists(atPath: volume.mountURL.path) else {
+                    continue
+                }
+                do {
+                    try NSWorkspace.shared.unmountAndEjectDevice(at: volume.mountURL)
+                    ejectedVolumeNames.append(volume.name)
+                } catch {
+                    throw SourceDeviceEjectionError(
+                        failedVolumeName: volume.name,
+                        ejectedVolumeNames: ejectedVolumeNames,
+                        message: error.localizedDescription
+                    )
+                }
+            }
         }.value
     }
 

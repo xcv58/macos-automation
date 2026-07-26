@@ -158,6 +158,28 @@ struct MountDetectionTests {
         let volume = try JSONDecoder().decode(MountedVolume.self, from: Data(json.utf8))
 
         #expect(volume.isDiskImage == false)
+        #expect(volume.wholeDiskIdentifier == nil)
+        #expect(volume.deviceGroupIdentifier == nil)
+        #expect(volume.deviceVendorName == nil)
+        #expect(volume.deviceProductName == nil)
+    }
+
+    @Test("volume detector removes serial-like USB product suffixes")
+    func detectorSanitizesUSBProductNames() {
+        #expect(VolumeDetector.sanitizedDeviceProductName("OsmoPocket4-ANGZP380029ZAV") == "OsmoPocket4")
+        #expect(VolumeDetector.sanitizedDeviceProductName("EOS-R5") == "EOS-R5")
+        #expect(VolumeDetector.sanitizedDeviceProductName("Samsung-T7Shield") == "Samsung-T7Shield")
+        #expect(VolumeDetector.sanitizedDeviceProductName("Extreme-PortableSSD") == "Extreme-PortableSSD")
+        #expect(VolumeDetector.sanitizedDeviceProductName("  Camera  ") == "Camera")
+    }
+
+    @Test("volume detector accepts only whole-disk BSD identifiers")
+    func detectorValidatesWholeDiskIdentifiers() {
+        #expect(VolumeDetector.validatedWholeDiskIdentifier("disk4") == "disk4")
+        #expect(VolumeDetector.validatedWholeDiskIdentifier("disk42") == "disk42")
+        #expect(VolumeDetector.validatedWholeDiskIdentifier("disk5s1") == nil)
+        #expect(VolumeDetector.validatedWholeDiskIdentifier("garbage") == nil)
+        #expect(VolumeDetector.validatedWholeDiskIdentifier(nil) == nil)
     }
 
     @Test("volume detector finds importable media before prompting")
@@ -207,5 +229,35 @@ struct MountDetectionTests {
         #expect(first)
         #expect(second == false)
         #expect(third)
+    }
+
+    @Test("mount debouncer coalesces sibling volumes from one device")
+    func debouncerCoalescesSiblingVolumes() {
+        var debouncer = MountDebouncer(interval: 10)
+        let first = MountedVolume(
+            id: "card",
+            name: "CARD",
+            mountURL: URL(fileURLWithPath: "/Volumes/CARD", isDirectory: true),
+            volumeUUID: "card",
+            isRemovable: true,
+            wholeDiskIdentifier: "disk4",
+            deviceGroupIdentifier: "camera"
+        )
+        let second = MountedVolume(
+            id: "internal",
+            name: "INTERNAL",
+            mountURL: URL(fileURLWithPath: "/Volumes/INTERNAL", isDirectory: true),
+            volumeUUID: "internal",
+            isRemovable: true,
+            wholeDiskIdentifier: "disk5",
+            deviceGroupIdentifier: "camera"
+        )
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+
+        let firstAccepted = debouncer.shouldAccept(first, now: start)
+        let secondAccepted = debouncer.shouldAccept(second, now: start.addingTimeInterval(1))
+
+        #expect(firstAccepted)
+        #expect(secondAccepted == false)
     }
 }

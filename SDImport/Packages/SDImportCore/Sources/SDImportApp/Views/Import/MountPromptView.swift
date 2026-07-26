@@ -3,6 +3,7 @@ import SwiftUI
 
 struct MountPromptView: View {
     let volume: MountedVolume
+    let deviceGroup: MountedDeviceGroup
     let continueAction: () -> Void
     let skipAction: () -> Void
 
@@ -13,9 +14,9 @@ struct MountPromptView: View {
                     .font(.title2)
                     .foregroundStyle(.secondary)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(volume.name)
+                    Text(deviceGroup.isMultiVolume ? deviceGroup.displayName : volume.name)
                         .font(.headline)
-                    Text(volume.mountURL.path)
+                    Text("\(volume.name) · \(volume.mountURL.path)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -23,7 +24,7 @@ struct MountPromptView: View {
                 }
             }
 
-            Text("SD Import found supported media on this volume. Scan it now to preview what will be copied.")
+            Text(promptMessage)
                 .font(.callout)
                 .foregroundStyle(.secondary)
 
@@ -32,7 +33,7 @@ struct MountPromptView: View {
                 Button("Skip") {
                     skipAction()
                 }
-                Button("Scan This Card") {
+                Button("Scan \(volume.name)") {
                     continueAction()
                 }
                 .keyboardShortcut(.defaultAction)
@@ -40,5 +41,13 @@ struct MountPromptView: View {
         }
         .padding(22)
         .frame(width: 420)
+    }
+
+    private var promptMessage: String {
+        if deviceGroup.isMultiVolume {
+            let names = deviceGroup.volumes.map(\.name).joined(separator: " and ")
+            return "\(deviceGroup.displayName) exposes \(deviceGroup.volumes.count) storage volumes: \(names). Scan \(volume.name) now; the source menu keeps both available."
+        }
+        return "SD Import found supported media on this volume. Scan it now to preview what will be copied."
     }
 }

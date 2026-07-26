@@ -23,22 +23,6 @@ public struct SourceEjectionPolicy: Sendable {
         )
     }
 
-    public func canEjectAfterScan(
-        summary: ScanSummary,
-        plannedCopyFiles: Int,
-        volume: MountedVolume
-    ) -> Bool {
-        guard !summary.jobID.isEmpty, plannedCopyFiles == 0 else {
-            return false
-        }
-
-        return canEject(
-            sourcePath: summary.mountPath,
-            expectedVolumeUUID: summary.volumeUUID,
-            volume: volume
-        )
-    }
-
     private func canEject(
         sourcePath: String,
         expectedVolumeUUID: String?,
