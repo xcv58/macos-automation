@@ -45,7 +45,11 @@ struct SourceEjectionControl: View {
         .buttonStyle(.borderedProminent)
         .controlSize(.large)
         .disabled(!canEject)
-        .accessibilityHint("Safely unmounts the source card")
+        .accessibilityHint(
+            volumeCount > 1
+                ? "Safely unmounts all source volumes"
+                : "Safely unmounts the source volume"
+        )
     }
 
     private var guidance: some View {

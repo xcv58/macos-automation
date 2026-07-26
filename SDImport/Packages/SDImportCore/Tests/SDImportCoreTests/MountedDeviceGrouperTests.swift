@@ -71,6 +71,7 @@ struct MountedDeviceGrouperTests {
         let groups = grouper.groups(from: [first, second])
 
         #expect(groups.count == 2)
+        #expect(groups.map(\.id) == ["device:usb-device-a", "device:usb-device-b"])
     }
 
     @Test("falls back to whole disk identity when hardware identity is unavailable")

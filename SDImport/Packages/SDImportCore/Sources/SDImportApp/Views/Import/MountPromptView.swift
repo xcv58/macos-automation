@@ -45,8 +45,8 @@ struct MountPromptView: View {
 
     private var promptMessage: String {
         if deviceGroup.isMultiVolume {
-            let names = deviceGroup.volumes.map(\.name).joined(separator: " and ")
-            return "\(deviceGroup.displayName) exposes \(deviceGroup.volumes.count) storage volumes: \(names). Scan \(volume.name) now; the source menu keeps both available."
+            let names = ListFormatter.localizedString(byJoining: deviceGroup.volumes.map(\.name))
+            return "\(deviceGroup.displayName) exposes \(deviceGroup.volumes.count) storage volumes: \(names). Scan \(volume.name) now; the source menu keeps all volumes available."
         }
         return "SD Import found supported media on this volume. Scan it now to preview what will be copied."
     }

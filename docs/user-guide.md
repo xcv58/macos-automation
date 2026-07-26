@@ -50,6 +50,8 @@ Default folder pattern:
 
 SD Import never ejects automatically after a cancelled import, a copy failure, or an import completed with errors. If another app is using the card, macOS may refuse the eject and SD Import will leave it mounted.
 
+Receipt-based and automatic ejection are also unavailable when an import destination is on the same physical device as the source. After the import is idle, use the explicit device eject action beside the source controls to safely unmount the device.
+
 Some cameras expose internal storage and an inserted memory card as separate volumes. SD Import groups volumes only when macOS identifies them as belonging to the same physical device. The source menu keeps each storage volume selectable, while the device eject action unmounts every related whole disk before reporting that the camera is safe to disconnect.
 
 Each mounted storage volume remains a direct, one-click choice in the source menu. Use the eject action beside `Scan Card` or `Scan Again` whenever you are finished with the selected device, including when you decide not to copy. The action is disabled while a scan or copy is active.

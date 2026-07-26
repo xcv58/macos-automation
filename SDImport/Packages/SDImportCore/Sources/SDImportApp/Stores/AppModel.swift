@@ -170,11 +170,16 @@ final class AppModel: ObservableObject {
     @Published private(set) var previewDestinations: [ImportPreviewDestination] = []
     @Published private(set) var previewSpaceRequirements: [ImportPreviewSpaceRequirement] = []
     @Published var currentSummary: ScanSummary?
-    @Published var currentResult: ImportResult?
+    @Published var currentResult: ImportResult? {
+        didSet {
+            rebuildSourceEjectionTargetCache()
+        }
+    }
     @Published var importProgress: ImportProgress?
     @Published var jobs: [ImportJob] = [] {
         didSet {
             rebuildRecentImportSuggestions()
+            rebuildSourceEjectionTargetCache()
         }
     }
     @Published var selectedJobID: String?
@@ -213,6 +218,9 @@ final class AppModel: ObservableObject {
     private var historyDetailTask: Task<Void, Never>?
     private var reportTask: Task<Void, Never>?
     private var sourceEjectionTask: Task<Void, Never>?
+    private var mountedVolumesSnapshot: [MountedVolume] = []
+    private var cachedSelectedSourceEjectionTarget: SourceEjectionTarget?
+    private var cachedResultSourceEjectionTargets: [String: SourceEjectionTarget] = [:]
     private var mountObserver: MountEventObserver?
     private var workflowProfilesByVolume: [String: ImportWorkflowProfile] = [:]
     private var preferredMixedDestinationLayout: ImportDestinationLayout = .singleLibrary
@@ -388,7 +396,10 @@ final class AppModel: ObservableObject {
     }
 
     func refreshAvailableSourceVolumes() {
-        availableSourceVolumes = VolumeDetector().mountedVolumes()
+        let detector = VolumeDetector()
+        mountedVolumesSnapshot = detector.allMountedVolumes()
+        availableSourceVolumes = detector.likelyImportVolumes(from: mountedVolumesSnapshot)
+        rebuildSourceEjectionTargetCache()
         rebuildRecentImportSuggestions()
     }
 
@@ -401,31 +412,30 @@ final class AppModel: ObservableObject {
     }
 
     var shouldOfferSelectedSourceEjection: Bool {
-        selectedMountedSourceVolume != nil
+        cachedSelectedSourceEjectionTarget != nil
     }
 
     var canEjectSelectedSource: Bool {
         !isWorking
             && !isEjectingSource
-            && selectedMountedSourceVolume != nil
+            && cachedSelectedSourceEjectionTarget != nil
     }
 
     var selectedSourceEjectionButtonTitle: String {
         guard !isEjectingSource else {
             return "Ejecting Source…"
         }
-        guard let sourceVolume = selectedMountedSourceVolume else {
+        guard let target = cachedSelectedSourceEjectionTarget else {
             return "Eject Source"
         }
-        let group = sourceDeviceGroup(containing: sourceVolume)
-        if group.isMultiVolume {
-            return "Eject \(group.displayName) — \(group.volumes.count) Volumes"
+        if target.volumeCount > 1 {
+            return "Eject \(target.displayName) — \(target.volumeCount) Volumes"
         }
-        return "Eject \(sourceVolume.name)"
+        return "Eject \(target.displayName)"
     }
 
     func ejectSelectedSource() {
-        guard !isWorking, !isEjectingSource, let target = selectedSourceEjectionTarget() else {
+        guard !isWorking, !isEjectingSource, let target = cachedSelectedSourceEjectionTarget else {
             statusMessage = "Source cannot be ejected safely"
             return
         }
@@ -528,6 +538,7 @@ final class AppModel: ObservableObject {
         photoPairSummary = nil
         workflowProfileWasManuallyChosenForCurrentJob = false
         validatePaths()
+        rebuildSourceEjectionTargetCache()
     }
 
     func destinationPathDidChange() {
@@ -1626,31 +1637,31 @@ final class AppModel: ObservableObject {
         guard ejectedSourceJobID != result.jobID else {
             return true
         }
-        return sourceEjectionTarget(for: result) != nil
+        return cachedResultSourceEjectionTargets[result.jobID] != nil
     }
 
     func canEjectSource(for result: ImportResult) -> Bool {
         !isEjectingSource
             && ejectedSourceJobID != result.jobID
-            && sourceEjectionTarget(for: result) != nil
+            && cachedResultSourceEjectionTargets[result.jobID] != nil
     }
 
     func sourceEjectionDisplayName(for result: ImportResult) -> String? {
         if ejectedSourceJobID == result.jobID {
             return ejectedSourceName
         }
-        return sourceEjectionTarget(for: result)?.displayName
+        return cachedResultSourceEjectionTargets[result.jobID]?.displayName
     }
 
     func sourceEjectionVolumeCount(for result: ImportResult) -> Int {
         if ejectedSourceJobID == result.jobID {
             return ejectedSourceVolumeCount
         }
-        return sourceEjectionTarget(for: result)?.volumeCount ?? 1
+        return cachedResultSourceEjectionTargets[result.jobID]?.volumeCount ?? 1
     }
 
     func ejectSource(for result: ImportResult) {
-        guard !isEjectingSource, let target = sourceEjectionTarget(for: result) else {
+        guard !isEjectingSource, let target = cachedResultSourceEjectionTargets[result.jobID] else {
             statusMessage = "Source cannot be ejected safely"
             return
         }
@@ -1671,6 +1682,8 @@ final class AppModel: ObservableObject {
             do {
                 try await Self.ejectDevice(target)
                 guard !Task.isCancelled else {
+                    self.isEjectingSource = false
+                    self.sourceEjectionTask = nil
                     return
                 }
                 self.ejectedSourceName = target.displayName
@@ -2153,26 +2166,51 @@ final class AppModel: ObservableObject {
         return detector.isLikelyImportVolume(volume) ? volume : nil
     }
 
-    private func sourceEjectionTarget(for result: ImportResult) -> SourceEjectionTarget? {
+    private func rebuildSourceEjectionTargetCache() {
+        cachedSelectedSourceEjectionTarget = selectedMountedSourceVolume.flatMap {
+            sourceEjectionTarget(
+                sourceVolume: $0,
+                destinationPaths: [],
+                mountedVolumes: mountedVolumesSnapshot
+            )
+        }
+
+        cachedResultSourceEjectionTargets.removeAll(keepingCapacity: true)
+        guard
+            let result = currentResult,
+            let target = buildSourceEjectionTarget(
+                for: result,
+                mountedVolumes: mountedVolumesSnapshot
+            )
+        else {
+            return
+        }
+        cachedResultSourceEjectionTargets[result.jobID] = target
+    }
+
+    private func buildSourceEjectionTarget(
+        for result: ImportResult,
+        mountedVolumes: [MountedVolume]
+    ) -> SourceEjectionTarget? {
         guard
             let job = jobs.first(where: { $0.id == result.jobID }),
-            let volume = Self.mountedSourceVolume(containing: job.mountPath),
+            let volume = mountedSourceVolume(containing: job.mountPath, among: mountedVolumes),
             SourceEjectionPolicy().canEject(job: job, result: result, volume: volume)
         else {
             return nil
         }
         return sourceEjectionTarget(
             sourceVolume: volume,
-            destinationPaths: [job.photosRoot, job.videosRoot]
+            destinationPaths: [job.photosRoot, job.videosRoot],
+            mountedVolumes: mountedVolumes
         )
     }
 
     private func sourceEjectionTarget(
         sourceVolume: MountedVolume,
-        destinationPaths: [String]
+        destinationPaths: [String],
+        mountedVolumes: [MountedVolume]
     ) -> SourceEjectionTarget? {
-        let detector = VolumeDetector()
-        let mountedVolumes = detector.allMountedVolumes()
         let grouper = MountedDeviceGrouper()
         let group = grouper.group(containing: sourceVolume, among: mountedVolumes)
         let ejectionVolumes = grouper.ejectionVolumes(for: sourceVolume, among: mountedVolumes)
@@ -2192,13 +2230,6 @@ final class AppModel: ObservableObject {
         )
     }
 
-    private func selectedSourceEjectionTarget() -> SourceEjectionTarget? {
-        guard let sourceVolume = selectedMountedSourceVolume else {
-            return nil
-        }
-        return sourceEjectionTarget(sourceVolume: sourceVolume, destinationPaths: [])
-    }
-
     private var selectedMountedSourceVolume: MountedVolume? {
         let sourcePath = URL(fileURLWithPath: expanded(cardPath), isDirectory: true)
             .standardizedFileURL.path
@@ -2206,6 +2237,23 @@ final class AppModel: ObservableObject {
             let mountPath = volume.mountURL.standardizedFileURL.path
             return sourcePath == mountPath || sourcePath.hasPrefix(mountPath + "/")
         }
+    }
+
+    private func mountedSourceVolume(
+        containing sourcePath: String,
+        among mountedVolumes: [MountedVolume]
+    ) -> MountedVolume? {
+        let sourcePath = URL(fileURLWithPath: sourcePath, isDirectory: true)
+            .standardizedFileURL.path
+        return mountedVolumes
+            .filter { volume in
+                let mountPath = volume.mountURL.standardizedFileURL.path
+                return sourcePath == mountPath || sourcePath.hasPrefix(mountPath + "/")
+            }
+            .max {
+                $0.mountURL.standardizedFileURL.path.count
+                    < $1.mountURL.standardizedFileURL.path.count
+            }
     }
 
     nonisolated private static func destination(

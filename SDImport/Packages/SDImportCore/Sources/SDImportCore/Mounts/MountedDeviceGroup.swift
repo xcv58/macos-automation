@@ -30,7 +30,11 @@ public struct MountedDeviceGrouper: Sendable {
                 )
             }
             .sorted {
-                $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending
+                let nameComparison = $0.displayName.localizedStandardCompare($1.displayName)
+                if nameComparison != .orderedSame {
+                    return nameComparison == .orderedAscending
+                }
+                return $0.id < $1.id
             }
     }
 

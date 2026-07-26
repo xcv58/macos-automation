@@ -47,7 +47,7 @@ committing any excerpt.
 | Manual source eject | Complete an error-free import, then choose the named eject action on the receipt | The whole source volume unmounts; the receipt says `Ejected — Safe to Remove`; destination files remain accessible | Passed 2026-07-22: 11 of 11 files (200.1 MB) copied, then the built-in-reader source ejected |
 | Automatic source eject | Enable `Eject source device after a successful import`, then complete an error-free import | The verified removable source device ejects only after the receipt and report are finalized | Required before releasing source ejection |
 | Multi-volume camera detection | Connect a camera that exposes internal storage and a memory card as separate disks | Both volumes are direct, one-click source choices labeled with the same physical device | Topology confirmed 2026-07-25 with DJI Pocket hardware: `Untitled` on one whole disk and `Pocket4` on a second whole disk share one DJI USB-device registry identity |
-| Multi-volume camera eject | Import from either storage volume, then choose the device eject action | Every whole disk belonging to the verified physical device unmounts before the UI says the camera is safe to disconnect | Passed 2026-07-25: user confirmed the grouped DJI device eject action unmounted both storage volumes |
+| Multi-volume camera eject | Import from either storage volume, then choose the device eject action | Every whole disk belonging to the verified physical device unmounts before the UI says the camera is safe to disconnect | Grouped manual eject passed 2026-07-25; the post-import receipt path was not separately exercised on multi-volume hardware |
 | Partial multi-volume eject failure | Keep one camera volume busy, then eject the grouped device | No force-eject occurs; the app identifies any volume already ejected and the volume that remains mounted | Fixture coverage required; confirm with hardware when practical |
 | Eject blocked by another app | Keep a source file open in another app, then request ejection | macOS refusal is shown in SD Import; the source remains mounted; no force-eject occurs | Required before releasing source ejection |
 | Import completed with errors | Enable automatic ejection, then produce a retryable copy failure | The source remains mounted and retry stays available | Fixture policy coverage exists; confirm with hardware before release |
@@ -72,9 +72,10 @@ committing any excerpt.
 - Build: SD Import 2.3 (39), local ad-hoc test build.
 - Device: DJI Pocket camera exposing `Pocket4` and `Untitled` as separate whole
   disks under one USB-device identity.
-- Multi-volume pass: both storage volumes appeared as direct source choices;
-  the grouped source action ejected the physical device without starting the
-  available copy.
+- Multi-volume manual pass: both storage volumes appeared as direct source
+  choices; the grouped source action ejected the physical device without
+  starting the available copy. The post-import receipt path was not separately
+  exercised on this hardware.
 - Zero-copy pass: the user confirmed that a completed scan with zero files
   planned for copying offered manual ejection and successfully ejected the
   source.
