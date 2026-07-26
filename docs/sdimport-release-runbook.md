@@ -7,6 +7,12 @@ Use GitHub Releases for the stable update channel.
 - Human download page: `https://github.com/xcv58/sd-import/releases`
 - Sparkle feed URL: `https://github.com/xcv58/sd-import/releases/latest/download/appcast.xml`
 - Latest DMG URL: `https://github.com/xcv58/sd-import/releases/latest/download/SD-Import.dmg`
+
+Sparkle uses the human download page as its full version-history destination.
+Each appcast item keeps a version-specific `sparkle:releaseNotesLink` so the
+update window can show notes for that release without changing the history
+button into an asset download.
+
 - Supported public artifact: signed and notarized `SD-Import.dmg`
 - Supported app target: Apple Silicon (`arm64`) on macOS 14 or newer
 

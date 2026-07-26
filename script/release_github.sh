@@ -16,6 +16,7 @@ SPARKLE_ACCOUNT="${SPARKLE_ACCOUNT:-xcv58-sd-import}"
 SPARKLE_FEED_URL="${SPARKLE_FEED_URL:-https://github.com/$REPO_FULL_NAME/releases/latest/download/appcast.xml}"
 SPARKLE_DOWNLOAD_URL_PREFIX="${SPARKLE_DOWNLOAD_URL_PREFIX:-https://github.com/$REPO_FULL_NAME/releases/download/$RELEASE_TAG/}"
 SPARKLE_RELEASE_NOTES_URL_PREFIX="${SPARKLE_RELEASE_NOTES_URL_PREFIX:-https://github.com/$REPO_FULL_NAME/releases/download/$RELEASE_TAG/}"
+SPARKLE_FULL_RELEASE_NOTES_URL="${SPARKLE_FULL_RELEASE_NOTES_URL:-https://github.com/$REPO_FULL_NAME/releases}"
 DMG_PATH="$DIST_DIR/SD-Import.dmg"
 ZIP_PATH="$DIST_DIR/SD-Import.zip"
 APPCAST_PATH="$UPDATES_DIR/appcast.xml"
@@ -47,6 +48,8 @@ Common optional environment:
   RELEASE_TITLE               default: SD Import \$APP_VERSION
   RELEASE_NOTES_FILE
   SPARKLE_ACCOUNT             default: xcv58-sd-import
+  SPARKLE_FULL_RELEASE_NOTES_URL
+                              default: the repository's GitHub Releases page
   SPARKLE_PRIVATE_KEY_FILE
   SPARKLE_PRIVATE_KEY
   GITHUB_REPOSITORY           default: xcv58/sd-import
@@ -126,11 +129,11 @@ validate_appcast() {
     fail "Generated appcast is missing or empty: $APPCAST_PATH"
   fi
 
-  /usr/bin/python3 - "$APPCAST_PATH" "$APP_VERSION" "$APP_BUILD" "$SPARKLE_DOWNLOAD_URL_PREFIX" "$SPARKLE_RELEASE_NOTES_URL_PREFIX" <<'PY'
+  /usr/bin/python3 - "$APPCAST_PATH" "$APP_VERSION" "$APP_BUILD" "$SPARKLE_DOWNLOAD_URL_PREFIX" "$SPARKLE_RELEASE_NOTES_URL_PREFIX" "$SPARKLE_FULL_RELEASE_NOTES_URL" <<'PY'
 import sys
 import xml.etree.ElementTree as ET
 
-path, expected_version, expected_build, download_prefix, release_notes_prefix = sys.argv[1:]
+path, expected_version, expected_build, download_prefix, release_notes_prefix, expected_full_release_notes = sys.argv[1:]
 sparkle_ns = "http://www.andymatuschak.org/xml-namespaces/sparkle"
 ns = {"sparkle": sparkle_ns}
 
@@ -156,6 +159,7 @@ short_version = node_text("sparkle:shortVersionString")
 minimum_system = node_text("sparkle:minimumSystemVersion")
 hardware = node_text("sparkle:hardwareRequirements")
 release_notes = node_text("sparkle:releaseNotesLink")
+full_release_notes = node_text("sparkle:fullReleaseNotesLink")
 enclosure = item.find("enclosure")
 
 if build != expected_build:
@@ -189,6 +193,11 @@ if release_notes != expected_notes:
     errors.append(f"release notes link is {release_notes!r}, expected {expected_notes!r}.")
 if "/releases/latest/download/" in release_notes:
     errors.append("release notes link must be versioned, not the latest-release redirect.")
+if full_release_notes != expected_full_release_notes:
+    errors.append(
+        f"full release notes link is {full_release_notes!r}, "
+        f"expected {expected_full_release_notes!r}."
+    )
 
 if errors:
     for error in errors:
@@ -303,6 +312,7 @@ fi
 SPARKLE_ACCOUNT="$SPARKLE_ACCOUNT" \
 SPARKLE_DOWNLOAD_URL_PREFIX="$SPARKLE_DOWNLOAD_URL_PREFIX" \
 SPARKLE_RELEASE_NOTES_URL_PREFIX="$SPARKLE_RELEASE_NOTES_URL_PREFIX" \
+SPARKLE_FULL_RELEASE_NOTES_URL="$SPARKLE_FULL_RELEASE_NOTES_URL" \
 "$ROOT_DIR/script/generate_appcast.sh" "$UPDATES_DIR"
 
 validate_appcast
