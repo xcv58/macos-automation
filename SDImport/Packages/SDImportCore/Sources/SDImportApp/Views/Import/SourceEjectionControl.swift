@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SourceEjectionControl: View {
     let sourceName: String
+    let volumeCount: Int
     let isEjected: Bool
     let isEjecting: Bool
     let canEject: Bool
@@ -37,19 +38,34 @@ struct SourceEjectionControl: View {
     private var ejectButton: some View {
         Button(action: eject) {
             Label(
-                isEjecting ? "Ejecting \(sourceName)…" : "Eject “\(sourceName)”",
+                isEjecting ? "Ejecting \(sourceName)…" : ejectButtonTitle,
                 systemImage: "eject.fill"
             )
         }
         .buttonStyle(.borderedProminent)
         .controlSize(.large)
         .disabled(!canEject)
-        .accessibilityHint("Safely unmounts the source card")
+        .accessibilityHint(
+            volumeCount > 1
+                ? "Safely unmounts all source volumes"
+                : "Safely unmounts the source volume"
+        )
     }
 
     private var guidance: some View {
-        Text("Eject the card before removing it.")
+        Text(
+            volumeCount > 1
+                ? "Unmounts all \(volumeCount) storage volumes before disconnecting the device."
+                : "Eject the card before removing it."
+        )
             .font(.callout)
             .foregroundStyle(.secondary)
+    }
+
+    private var ejectButtonTitle: String {
+        if volumeCount > 1 {
+            return "Eject \(sourceName) — \(volumeCount) Volumes"
+        }
+        return "Eject “\(sourceName)”"
     }
 }

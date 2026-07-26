@@ -31,7 +31,7 @@ When the app opens:
 2. In `Destinations`, choose where imported photos and videos should go.
 3. In `General`, keep Theme set to `System` unless you want to force Light or Dark.
 4. Leave `Prompt on card mount` on if you want SD Import to appear when you insert a card.
-5. Turn on `Eject source after successful import` if you want verified removable cards ejected automatically. It is off by default.
+5. Turn on `Eject source device after a successful import` if you want verified removable cards or cameras ejected automatically. It is off by default.
 
 Default folder pattern:
 
@@ -41,14 +41,20 @@ Default folder pattern:
 
 ## Import From A Card
 
-1. Insert an SD card or connect a camera card reader.
+1. Insert an SD card or connect a camera.
 2. SD Import scans the card and shows a preview.
 3. Review what is new, already imported, unsupported, or conflicting.
 4. Start the import.
 5. Keep the card connected until the progress finishes.
-6. Use `Eject Source` on the copy receipt, or wait for automatic ejection if you enabled it in Settings.
+6. Use the named eject action on the copy receipt, or wait for automatic ejection if you enabled it in Settings.
 
 SD Import never ejects automatically after a cancelled import, a copy failure, or an import completed with errors. If another app is using the card, macOS may refuse the eject and SD Import will leave it mounted.
+
+Receipt-based and automatic ejection are also unavailable when an import destination is on the same physical device as the source. After the import is idle, use the explicit device eject action beside the source controls to safely unmount the device.
+
+Some cameras expose internal storage and an inserted memory card as separate volumes. SD Import groups volumes only when macOS identifies them as belonging to the same physical device. The source menu keeps each storage volume selectable, while the device eject action unmounts every related whole disk before reporting that the camera is safe to disconnect.
+
+Each mounted storage volume remains a direct, one-click choice in the source menu. Use the eject action beside `Scan Card` or `Scan Again` whenever you are finished with the selected device, including when you decide not to copy. The action is disabled while a scan or copy is active.
 
 You can also open the app and choose `Import From Card...` from the menu.
 

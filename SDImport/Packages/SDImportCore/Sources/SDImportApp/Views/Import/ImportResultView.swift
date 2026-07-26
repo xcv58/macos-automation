@@ -92,6 +92,7 @@ struct ImportResultView: View {
             if model.shouldOfferSourceEjection(for: result) {
                 SourceEjectionControl(
                     sourceName: model.sourceEjectionDisplayName(for: result) ?? "Source Card",
+                    volumeCount: model.sourceEjectionVolumeCount(for: result),
                     isEjected: model.ejectedSourceJobID == result.jobID,
                     isEjecting: model.isEjectingSource,
                     canEject: model.canEjectSource(for: result)

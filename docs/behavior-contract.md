@@ -257,15 +257,19 @@ Terminal progress states:
 
 ## Source Ejection
 
-- A successful copy receipt may offer `Eject Source` for the source card.
-- The receipt presents ejection as the primary completion action, names the mounted source, and confirms when it is safe to remove.
-- A successful scan with zero files currently planned for copying offers the same manual eject action; it does not trigger automatic ejection.
-- `Eject source after successful import` is an opt-in setting and defaults off.
+- A successful copy receipt may offer a named eject action for the source card or device.
+- The receipt presents ejection as the primary completion action, names the mounted source device, states how many storage volumes will be unmounted, and confirms when it is safe to remove.
+- Whenever a verified removable source is selected and no scan or copy is active, the Source panel offers a manual eject action. This lets the user safely disconnect before scanning, after scanning, or instead of importing. A scan never triggers automatic ejection.
+- `Eject source device after a successful import` is an opt-in setting and defaults off.
 - Automatic ejection requires an error-free imported job and a currently mounted removable volume whose UUID matches the scanned job.
 - Non-removable volumes, disk images, UUID mismatches, cancelled imports, and imports with failures are never ejected automatically.
 - Removable cards remain eligible when macOS reports their built-in reader location as internal.
 - Ejection uses the source volume root even when the scanned source is a folder inside that volume.
-- Ejection failures leave the source mounted and surface an error to the user.
+- Volumes that share the nearest physical USB-device registry identity are presented as one source device.
+- Multiple mounted volumes on the same whole disk require one whole-disk eject operation. Multiple whole disks exposed by one physical USB device are each ejected before the app reports that the device is safe to disconnect.
+- After an import, a destination on the same physical device blocks receipt-driven source-device ejection. The explicit Source-panel action remains available whenever no scan or copy is active.
+- Device grouping never relies only on volume names, model names, or mount timing. If macOS does not expose a reliable shared identity, volumes remain separate.
+- Ejection never forces a busy volume. A partial multi-disk failure reports which storage was ejected and which storage remains mounted.
 
 ## History
 

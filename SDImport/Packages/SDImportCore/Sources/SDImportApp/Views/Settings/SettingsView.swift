@@ -141,12 +141,12 @@ struct SettingsView: View {
                             .padding(.vertical, 12)
 
                         VStack(alignment: .leading, spacing: 5) {
-                            Toggle("Eject source after a successful import", isOn: $model.ejectAfterSuccessfulImport)
+                            Toggle("Eject source device after a successful import", isOn: $model.ejectAfterSuccessfulImport)
                                 .onChange(of: model.ejectAfterSuccessfulImport) {
                                     model.savePreferences()
                                 }
 
-                            Text("Only removable sources are ejected after an error-free copy. Zero-copy scans still offer a manual Eject button.")
+                            Text("After an error-free copy, ejects all removable storage volumes macOS identifies as belonging to the source device. Zero-copy scans still require manual ejection.")
                                 .font(.callout)
                                 .foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)

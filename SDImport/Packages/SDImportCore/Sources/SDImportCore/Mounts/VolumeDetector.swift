@@ -1,5 +1,6 @@
 import DiskArbitration
 import Foundation
+import IOKit
 
 public struct VolumeDetector: Sendable {
     private let ignoredNameFragments: [String]
@@ -41,11 +42,15 @@ public struct VolumeDetector: Sendable {
             isInternal: values?.volumeIsInternal ?? false,
             isDiskImage: diskTraits.isDiskImage || Self.hasDiskImageNameOrPath(name: name, path: mountURL.path),
             totalCapacityBytes: totalCapacity,
-            availableCapacityBytes: availableCapacity
+            availableCapacityBytes: availableCapacity,
+            wholeDiskIdentifier: diskTraits.wholeDiskIdentifier,
+            deviceGroupIdentifier: diskTraits.deviceGroupIdentifier,
+            deviceVendorName: diskTraits.deviceVendorName,
+            deviceProductName: diskTraits.deviceProductName
         )
     }
 
-    public func mountedVolumes(
+    public func allMountedVolumes(
         under rootURL: URL = URL(fileURLWithPath: "/Volumes", isDirectory: true),
         fileManager: FileManager = .default
     ) -> [MountedVolume] {
@@ -69,7 +74,14 @@ public struct VolumeDetector: Sendable {
             return []
         }
 
-        return likelyImportVolumes(from: urls.map(mountedVolume(from:)))
+        return urls.map(mountedVolume(from:))
+    }
+
+    public func mountedVolumes(
+        under rootURL: URL = URL(fileURLWithPath: "/Volumes", isDirectory: true),
+        fileManager: FileManager = .default
+    ) -> [MountedVolume] {
+        likelyImportVolumes(from: allMountedVolumes(under: rootURL, fileManager: fileManager))
     }
 
     public func likelyImportVolumes(from volumes: [MountedVolume]) -> [MountedVolume] {
@@ -155,12 +167,105 @@ public struct VolumeDetector: Sendable {
             return DiskTraits()
         }
 
+        let wholeDiskIdentifier: String?
+        if
+            let wholeDisk = DADiskCopyWholeDisk(disk),
+            let bsdName = DADiskGetBSDName(wholeDisk)
+        {
+            // Keep the copied DADisk alive while copying its borrowed BSD-name pointer.
+            wholeDiskIdentifier = validatedWholeDiskIdentifier(String(cString: bsdName))
+        } else {
+            wholeDiskIdentifier = nil
+        }
+        let deviceTraits = usbDeviceTraits(for: disk)
+
         return DiskTraits(
             deviceModel: description[kDADiskDescriptionDeviceModelKey as String] as? String,
             mediaName: description[kDADiskDescriptionMediaNameKey as String] as? String,
             isRemovable: boolValue(description[kDADiskDescriptionMediaRemovableKey as String]),
-            isEjectable: boolValue(description[kDADiskDescriptionMediaEjectableKey as String])
+            isEjectable: boolValue(description[kDADiskDescriptionMediaEjectableKey as String]),
+            wholeDiskIdentifier: wholeDiskIdentifier,
+            deviceGroupIdentifier: deviceTraits?.identifier,
+            deviceVendorName: deviceTraits?.vendorName,
+            deviceProductName: sanitizedDeviceProductName(deviceTraits?.productName)
         )
+    }
+
+    private static func usbDeviceTraits(for disk: DADisk) -> USBDeviceTraits? {
+        var entry = DADiskCopyIOMedia(disk)
+        while entry != IO_OBJECT_NULL {
+            if IOObjectConformsTo(entry, "IOUSBHostDevice") != 0 {
+                var registryEntryID: UInt64 = 0
+                let result = IORegistryEntryGetRegistryEntryID(entry, &registryEntryID)
+                let traits = result == KERN_SUCCESS
+                    ? USBDeviceTraits(
+                        identifier: String(registryEntryID, radix: 16),
+                        vendorName: registryStringProperty("USB Vendor Name", entry: entry),
+                        productName: registryStringProperty("USB Product Name", entry: entry)
+                    )
+                    : nil
+                IOObjectRelease(entry)
+                return traits
+            }
+
+            var parent = IO_OBJECT_NULL
+            let result = IORegistryEntryGetParentEntry(entry, kIOServicePlane, &parent)
+            IOObjectRelease(entry)
+            guard result == KERN_SUCCESS else {
+                return nil
+            }
+            entry = parent
+        }
+        return nil
+    }
+
+    private static func registryStringProperty(_ key: String, entry: io_registry_entry_t) -> String? {
+        guard let value = IORegistryEntryCreateCFProperty(
+            entry,
+            key as CFString,
+            kCFAllocatorDefault,
+            0
+        ) else {
+            return nil
+        }
+        return value.takeRetainedValue() as? String
+    }
+
+    static func sanitizedDeviceProductName(_ productName: String?) -> String? {
+        guard let productName else {
+            return nil
+        }
+        let trimmed = productName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return nil
+        }
+
+        let components = trimmed.split(separator: "-", omittingEmptySubsequences: false)
+        let suffix = components.last
+        let letterCount = suffix?.count(where: \.isLetter) ?? 0
+        let numberCount = suffix?.count(where: \.isNumber) ?? 0
+        guard
+            components.count > 1,
+            let suffix,
+            suffix.count >= 12,
+            letterCount >= 4,
+            numberCount >= 4,
+            suffix.allSatisfy({ $0.isLetter || $0.isNumber })
+        else {
+            return trimmed
+        }
+        return components.dropLast().joined(separator: "-")
+    }
+
+    static func validatedWholeDiskIdentifier(_ identifier: String?) -> String? {
+        guard let identifier, identifier.hasPrefix("disk") else {
+            return nil
+        }
+        let number = identifier.dropFirst(4)
+        guard !number.isEmpty, number.allSatisfy(\.isNumber) else {
+            return nil
+        }
+        return identifier
     }
 
     private static func boolValue(_ value: Any?) -> Bool {
@@ -178,17 +283,29 @@ public struct VolumeDetector: Sendable {
         let mediaName: String?
         let isRemovable: Bool
         let isEjectable: Bool
+        let wholeDiskIdentifier: String?
+        let deviceGroupIdentifier: String?
+        let deviceVendorName: String?
+        let deviceProductName: String?
 
         init(
             deviceModel: String? = nil,
             mediaName: String? = nil,
             isRemovable: Bool = false,
-            isEjectable: Bool = false
+            isEjectable: Bool = false,
+            wholeDiskIdentifier: String? = nil,
+            deviceGroupIdentifier: String? = nil,
+            deviceVendorName: String? = nil,
+            deviceProductName: String? = nil
         ) {
             self.deviceModel = deviceModel
             self.mediaName = mediaName
             self.isRemovable = isRemovable
             self.isEjectable = isEjectable
+            self.wholeDiskIdentifier = wholeDiskIdentifier
+            self.deviceGroupIdentifier = deviceGroupIdentifier
+            self.deviceVendorName = deviceVendorName
+            self.deviceProductName = deviceProductName
         }
 
         var isDiskImage: Bool {
@@ -196,6 +313,12 @@ public struct VolumeDetector: Sendable {
                 .compactMap { $0?.lowercased() }
                 .contains { $0.contains("disk image") }
         }
+    }
+
+    private struct USBDeviceTraits: Sendable {
+        let identifier: String
+        let vendorName: String?
+        let productName: String?
     }
 
     private func isDirectory(_ url: URL, fileManager: FileManager) -> Bool {

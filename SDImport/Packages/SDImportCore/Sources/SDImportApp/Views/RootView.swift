@@ -42,6 +42,7 @@ struct RootView: View {
         .sheet(item: pendingMountedVolumeBinding) { volume in
             MountPromptView(
                 volume: volume,
+                deviceGroup: model.sourceDeviceGroup(containing: volume),
                 continueAction: model.acceptMountedVolumePrompt,
                 skipAction: model.skipMountedVolumePrompt
             )

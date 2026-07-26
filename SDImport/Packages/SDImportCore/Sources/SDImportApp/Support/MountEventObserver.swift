@@ -79,7 +79,11 @@ final class MountEventObserver {
                 isInternal: volume.isInternal,
                 isDiskImage: volume.isDiskImage,
                 totalCapacityBytes: volume.totalCapacityBytes,
-                availableCapacityBytes: volume.availableCapacityBytes
+                availableCapacityBytes: volume.availableCapacityBytes,
+                wholeDiskIdentifier: volume.wholeDiskIdentifier,
+                deviceGroupIdentifier: volume.deviceGroupIdentifier,
+                deviceVendorName: volume.deviceVendorName,
+                deviceProductName: volume.deviceProductName
             )
         }
         guard detector.isLikelyImportVolume(volume) else {
