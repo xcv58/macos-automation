@@ -38,31 +38,26 @@ struct HistoryView: View {
     }
 
     private var historyLayout: some View {
-        GeometryReader { proxy in
-            if proxy.size.width >= 760 {
-                HStack(alignment: .top, spacing: 16) {
-                    recentJobsSection
-                    .frame(width: 360)
+        HSplitView {
+            recentJobsSection
+                .frame(minWidth: 250, idealWidth: 300, maxWidth: 360)
 
-                    detailSection
-                        .frame(minWidth: 0, maxWidth: .infinity)
-                }
-            } else {
-                VSplitView {
-                    recentJobsSection
-                        .frame(minHeight: 180)
-
-                    detailSection
-                        .frame(minHeight: 260)
-                }
-            }
+            detailSection
+                .frame(minWidth: 360, maxWidth: .infinity)
         }
         .frame(minHeight: 320, maxHeight: .infinity)
     }
 
     private var recentJobsSection: some View {
-        AppSection("Recent Imports", systemImage: "clock.arrow.circlepath") {
-            VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 0) {
+            Label("Recent Imports", systemImage: "clock.arrow.circlepath")
+                .font(.headline)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 10) {
                 Picker("Filter", selection: $filter) {
                     ForEach(HistoryFilter.allCases) { filter in
                         Text(filter.title).tag(filter)
@@ -94,25 +89,25 @@ struct HistoryView: View {
                     .frame(minHeight: 180, maxHeight: .infinity)
                 }
             }
+            .padding(.horizontal, 10)
+            .padding(.top, 10)
+            .padding(.bottom, 8)
         }
+        .background(AppSurfacePalette.contentBackground)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private var detailSection: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Label("Job Details", systemImage: "doc.text.magnifyingglass")
-                .font(.headline)
-
+        Group {
             if model.isHistoryDetailLoading {
                 ProgressView("Loading job...")
                     .controlSize(.small)
-                    .frame(maxWidth: .infinity, minHeight: 220)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 HistoryDetailView(job: model.selectedJob(), files: model.selectedJobFiles)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
         }
-        .padding(.top, 2)
+        .padding(.leading, 16)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 

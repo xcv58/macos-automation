@@ -145,10 +145,14 @@ except ET.ParseError as error:
     print(f"Invalid Sparkle appcast XML: {error}", file=sys.stderr)
     sys.exit(2)
 
-item = root.find("./channel/item")
-if item is None:
-    print("Sparkle appcast has no channel item.", file=sys.stderr)
+items = root.findall("./channel/item")
+if len(items) != 1:
+    print(
+        f"Sparkle appcast must contain exactly one channel item; found {len(items)}.",
+        file=sys.stderr,
+    )
     sys.exit(2)
+item = items[0]
 
 def node_text(name):
     node = item.find(name, ns)

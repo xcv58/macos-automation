@@ -15,75 +15,88 @@ struct HistoryDetailView: View {
 
     var body: some View {
         if let job {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    header(job)
-                    metrics(job)
-                    actions(job)
-                        .buttonStyle(.bordered)
-                    fileSection
-                }
-                .padding(.trailing, 8)
-            }
+            detail(job)
         } else {
             ContentUnavailableView("No Job Selected", systemImage: "clock.arrow.circlepath")
                 .frame(maxWidth: .infinity, minHeight: 220)
         }
     }
 
-    private func header(_ job: ImportJob) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text(HistoryJobPresentation.title(for: job))
-                .font(.title2)
-                .fontWeight(.semibold)
-            Text(HistoryJobPresentation.subtitle(for: job))
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-            Text(job.id)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .textSelection(.enabled)
-            Text(job.mountPath)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .textSelection(.enabled)
+    private func detail(_ job: ImportJob) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            header(job)
+            metrics(job)
+            Divider()
+            fileSection
+        }
+        .padding(.trailing, 8)
+        .alert("Forget imported files?", isPresented: $isShowingForgetConfirmation) {
+            Button("Forget Files", role: .destructive) {
+                model.forgetImportedFiles(for: job)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("SD Import will keep the copied files and job history. Files first imported by this job can be imported again for another destination.")
         }
     }
 
-    private func metrics(_ job: ImportJob) -> some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 110), spacing: 10)], alignment: .leading, spacing: 10) {
-            MetricView(title: "Scanned", value: job.scannedFiles)
-            MetricView(title: "New", value: job.newFiles)
-            MetricView(title: "Known", value: job.knownFiles)
-            MetricView(title: "Conflicts", value: job.conflictFiles)
-            MetricView(title: "Imported", value: job.importedFiles)
-            MetricView(title: "Failed", value: job.failedFiles)
+    private func header(_ job: ImportJob) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text(HistoryJobPresentation.title(for: job))
+                    .font(.title2)
+                    .fontWeight(.semibold)
+                Text(HistoryJobPresentation.subtitle(for: job))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                Text(job.id)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                Text(job.mountPath)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .textSelection(.enabled)
+                    .help(job.mountPath)
+            }
+
+            Spacer(minLength: 8)
+            actions(job)
         }
-        .padding()
-        .appCardSurface()
     }
 
     private func actions(_ job: ImportJob) -> some View {
-        ViewThatFits(in: .horizontal) {
-            HStack {
-                actionButtons(job)
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                actionButtons(job)
-            }
-        }
-    }
-
-    private func actionButtons(_ job: ImportJob) -> some View {
-        Group {
+        HStack(spacing: 8) {
             Button {
                 model.retrySelectedJob()
             } label: {
                 Label("Retry", systemImage: "arrow.counterclockwise")
             }
             .disabled(model.isWorking || !job.canRetryImport)
+
+            Menu {
+                summaryActions(job)
+
+                Divider()
+
+                Button(role: .destructive) {
+                    isShowingForgetConfirmation = true
+                } label: {
+                    Label("Forget Files…", systemImage: "trash")
+                }
+                .disabled(model.isWorking || (job.importedFiles == 0 && files.allSatisfy { $0.copyStatus != .copied }))
+            } label: {
+                Label("More", systemImage: "ellipsis.circle")
+            }
+        }
+        .buttonStyle(.bordered)
+        .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private func summaryActions(_ job: ImportJob) -> some View {
+        Group {
             Button {
                 model.copySummary(for: job)
             } label: {
@@ -100,56 +113,49 @@ struct HistoryDetailView: View {
                 Label("View Report", systemImage: "doc.text.magnifyingglass")
             }
             .disabled(job.summaryMarkdownPath == nil && job.summaryJSONPath == nil)
-
-            Button(role: .destructive) {
-                isShowingForgetConfirmation = true
-            } label: {
-                Label("Forget Files", systemImage: "trash")
-            }
-            .disabled(model.isWorking || (job.importedFiles == 0 && files.allSatisfy { $0.copyStatus != .copied }))
-            .alert("Forget imported files?", isPresented: $isShowingForgetConfirmation) {
-                Button("Forget Files", role: .destructive) {
-                    model.forgetImportedFiles(for: job)
-                }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("SD Import will keep the copied files and job history. Files first imported by this job can be imported again for another destination.")
-            }
         }
+    }
+
+    private func metrics(_ job: ImportJob) -> some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 90), spacing: 10)], alignment: .leading, spacing: 10) {
+            MetricView(title: "Scanned", value: job.scannedFiles)
+            MetricView(title: "New", value: job.newFiles)
+            MetricView(title: "Known", value: job.knownFiles)
+            MetricView(title: "Conflicts", value: job.conflictFiles)
+            MetricView(title: "Imported", value: job.importedFiles)
+            MetricView(title: "Failed", value: job.failedFiles)
+        }
+        .padding(12)
+        .appCardSurface()
     }
 
     private var fileSection: some View {
         let files = filteredFiles
         let totalCount = self.files.count
         return VStack(alignment: .leading, spacing: 8) {
-            ViewThatFits(in: .horizontal) {
-                HStack {
-                    fileHeading(displayedCount: files.count, totalCount: totalCount)
-                    Spacer()
-                    fileFilterControl
-                }
-
-                VStack(alignment: .leading, spacing: 8) {
-                    fileHeading(displayedCount: files.count, totalCount: totalCount)
-                    fileFilterControl
-                }
+            HStack(spacing: 10) {
+                fileHeading(displayedCount: files.count, totalCount: totalCount)
+                Spacer()
+                fileFilterControl
             }
 
             if files.isEmpty {
                 ContentUnavailableView("No Files", systemImage: "doc")
                     .frame(maxWidth: .infinity, minHeight: 140)
             } else {
-                LazyVStack(alignment: .leading, spacing: 0) {
+                List {
                     ForEach(files) { file in
                         HistoryFileRow(file: file)
-                        Divider()
+                            .listRowInsets(EdgeInsets(top: 3, leading: 10, bottom: 3, trailing: 10))
+                            .listRowSeparator(.visible)
                     }
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 4)
-                .appCardSurface()
+                .listStyle(.inset)
+                .environment(\.defaultMinListRowHeight, 1)
+                .frame(minHeight: 180, maxHeight: .infinity)
             }
         }
+        .frame(maxHeight: .infinity, alignment: .top)
     }
 
     private func fileHeading(displayedCount: Int, totalCount: Int) -> some View {
@@ -164,19 +170,15 @@ struct HistoryDetailView: View {
     }
 
     private var fileFilterControl: some View {
-        HStack {
-            Text("File Filter")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Picker("File Filter", selection: $fileFilter) {
-                ForEach(HistoryFileFilter.allCases) { filter in
-                    Text(filter.title).tag(filter)
-                }
+        Picker("File Filter", selection: $fileFilter) {
+            ForEach(HistoryFileFilter.allCases) { filter in
+                Text(filter.title).tag(filter)
             }
-            .labelsHidden()
-            .pickerStyle(.segmented)
-            .frame(width: 320)
         }
+        .labelsHidden()
+        .pickerStyle(.menu)
+        .frame(width: 120)
+        .accessibilityLabel("File filter")
     }
 
     private func fileCountText(displayedCount: Int, totalCount: Int) -> String {
