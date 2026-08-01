@@ -229,6 +229,7 @@ public struct JobRepository {
         status: CopyStatus,
         finalDestinationPath: String? = nil,
         error: String? = nil,
+        knownSource: KnownFileSource? = nil,
         completedAt: Date? = Date()
     ) throws {
         try pool.write { db in
@@ -238,6 +239,7 @@ public struct JobRepository {
                 SET copy_status = ?,
                     final_dest_path = COALESCE(?, final_dest_path),
                     error = ?,
+                    known_source = COALESCE(?, known_source),
                     completed_at = ?
                 WHERE id = ?
                 """,
@@ -245,6 +247,7 @@ public struct JobRepository {
                     status.databaseValue,
                     finalDestinationPath,
                     error,
+                    knownSource?.rawValue,
                     DateCoding.optionalString(from: completedAt),
                     id
                 ]
@@ -291,6 +294,7 @@ public struct JobRepository {
                         final_dest_path = NULL,
                         copy_status = ?,
                         error = ?,
+                        portable_receipt_override = COALESCE(?, portable_receipt_override),
                         completed_at = NULL
                     WHERE job_id = ? AND id = ?
                     """,
@@ -300,6 +304,7 @@ public struct JobRepository {
                         update.plannedDestinationPath,
                         update.copyStatus.databaseValue,
                         update.error,
+                        update.portableReceiptOverride,
                         jobID,
                         update.id
                     ]
@@ -384,10 +389,10 @@ public struct JobRepository {
         try db.execute(
             sql: """
             INSERT INTO job_files (
-                job_id, src_path, rel_path, filename, ext, size, mtime,
-                media_type, hash, capture_date, decision, dest_dir, dest_path,
-                final_dest_path, copy_status, error, completed_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                job_id, src_path, rel_path, filename, ext, size, mtime, mtime_epoch_seconds,
+                media_type, hash, capture_date, decision, known_source, dest_dir,
+                dest_path, final_dest_path, copy_status, error, portable_receipt_override, completed_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             arguments: [
                 file.jobID,
@@ -397,15 +402,18 @@ public struct JobRepository {
                 file.ext,
                 file.size,
                 file.modificationDateString,
+                file.modificationTimeEpochSeconds,
                 file.mediaKind.rawValue,
                 file.fingerprint,
                 file.captureDate,
                 file.decision.databaseValue,
+                file.knownSource?.rawValue,
                 file.destinationDirectory,
                 file.plannedDestinationPath,
                 file.finalDestinationPath,
                 file.copyStatus.databaseValue,
                 file.error,
+                file.portableReceiptOverride ?? false,
                 DateCoding.optionalString(from: file.completedAt)
             ]
         )
@@ -467,15 +475,18 @@ public struct JobRepository {
             ext: row["ext"],
             size: row["size"],
             modificationDateString: row["mtime"],
+            modificationTimeEpochSeconds: row["mtime_epoch_seconds"],
             mediaKind: mediaKind,
             fingerprint: row["hash"],
             captureDate: row["capture_date"],
             decision: decision,
+            knownSource: (row["known_source"] as String?).flatMap(KnownFileSource.init(rawValue:)),
             destinationDirectory: row["dest_dir"],
             plannedDestinationPath: row["dest_path"],
             finalDestinationPath: row["final_dest_path"],
             copyStatus: copyStatus,
             error: row["error"],
+            portableReceiptOverride: row["portable_receipt_override"],
             completedAt: DateCoding.date(from: row["completed_at"])
         )
     }

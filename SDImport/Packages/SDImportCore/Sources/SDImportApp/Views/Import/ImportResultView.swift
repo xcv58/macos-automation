@@ -66,6 +66,15 @@ struct ImportResultView: View {
                 ReceiptMetric(title: "Failed", value: "\(result.failedFiles)")
             }
 
+            if let warning = result.portableReceiptWarning {
+                AppStatusLabel(
+                    title: warning,
+                    systemImage: "exclamationmark.triangle",
+                    role: .warning
+                )
+                    .font(.callout)
+            }
+
             if !folderSummaries.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Destinations")

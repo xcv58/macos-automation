@@ -39,6 +39,7 @@ struct SDImportCLI {
             let location = option("--location", in: arguments) ?? "Untitled"
             let reportsURL = try optionURL("--reports-dir", in: arguments)
             let jobID = option("--job-id", in: arguments) ?? JobID.make()
+            let portableReceiptsEnabled = arguments.contains("--portable-receipts")
             let scanner = MediaScanner(
                 jobRepository: jobRepository,
                 dedupeRepository: dedupeRepository
@@ -50,16 +51,19 @@ struct SDImportCLI {
                     location: location,
                     roots: DestinationRoots(photosURL: photosURL, videosURL: videosURL),
                     reportsDirectoryURL: reportsURL,
-                    jobID: jobID
+                    jobID: jobID,
+                    portableReceiptsEnabled: portableReceiptsEnabled
                 )
             )
             try printJSON(summary)
 
         case "import", "retry":
             let jobID = try required("--job-id", in: arguments)
+            let portableReceiptsEnabled = arguments.contains("--portable-receipts")
             let engine = ImportEngine(
                 jobRepository: jobRepository,
-                dedupeRepository: dedupeRepository
+                dedupeRepository: dedupeRepository,
+                portableReceiptsEnabled: portableReceiptsEnabled
             )
             let result = try engine.importFiles(jobID: jobID)
             try printJSON(result)
@@ -92,9 +96,9 @@ struct SDImportCLI {
         print(
             """
             Usage:
-              sdimport scan --input PATH --photos-root PATH --videos-root PATH [--location LABEL] [--reports-dir PATH] [--db PATH]
-              sdimport import --job-id JOB_ID [--db PATH]
-              sdimport retry --job-id JOB_ID [--db PATH]
+              sdimport scan --input PATH --photos-root PATH --videos-root PATH [--location LABEL] [--reports-dir PATH] [--portable-receipts] [--db PATH]
+              sdimport import --job-id JOB_ID [--portable-receipts] [--db PATH]
+              sdimport retry --job-id JOB_ID [--portable-receipts] [--db PATH]
               sdimport list-jobs [--limit N] [--db PATH]
               sdimport show-job --job-id JOB_ID [--db PATH]
               sdimport prune --retention 30|90|365|forever [--dry-run] [--db PATH]

@@ -151,6 +151,7 @@ final class AppModel: ObservableObject {
     @Published var historyRetention: RetentionPolicy
     @Published var autoPromptEnabled: Bool
     @Published var ejectAfterSuccessfulImport: Bool
+    @Published var portableImportReceiptsEnabled: Bool
     @Published var hasCompletedOnboarding: Bool
     @Published var workflowProfile: ImportWorkflowProfile
     @Published var importMediaSelection: ImportMediaSelection
@@ -242,6 +243,7 @@ final class AppModel: ObservableObject {
         self.historyRetention = .defaultPolicy
         self.autoPromptEnabled = defaults.bool(forKey: DefaultsKeys.autoPromptEnabled)
         self.ejectAfterSuccessfulImport = defaults.bool(forKey: DefaultsKeys.ejectAfterSuccessfulImport)
+        self.portableImportReceiptsEnabled = defaults.bool(forKey: DefaultsKeys.portableImportReceiptsEnabled)
         self.hasCompletedOnboarding = defaults.bool(forKey: DefaultsKeys.hasCompletedOnboarding)
         let storedWorkflowProfile = ImportWorkflowProfile(
             rawValue: defaults.string(forKey: DefaultsKeys.workflowProfile) ?? ""
@@ -335,6 +337,7 @@ final class AppModel: ObservableObject {
         defaults.set(location, forKey: DefaultsKeys.location)
         defaults.set(autoPromptEnabled, forKey: DefaultsKeys.autoPromptEnabled)
         defaults.set(ejectAfterSuccessfulImport, forKey: DefaultsKeys.ejectAfterSuccessfulImport)
+        defaults.set(portableImportReceiptsEnabled, forKey: DefaultsKeys.portableImportReceiptsEnabled)
         defaults.set(hasCompletedOnboarding, forKey: DefaultsKeys.hasCompletedOnboarding)
         defaults.set(workflowProfile.rawValue, forKey: DefaultsKeys.workflowProfile)
         defaults.set(importMediaSelection.rawValue, forKey: DefaultsKeys.importMediaSelection)
@@ -634,6 +637,7 @@ final class AppModel: ObservableObject {
         )
         let location = Self.defaultSessionLabel(for: location)
         let reportsURL = reportsURL
+        let portableImportReceiptsEnabled = portableImportReceiptsEnabled
 
         importTask = Task.detached(priority: .userInitiated) {
             do {
@@ -652,7 +656,8 @@ final class AppModel: ObservableObject {
                         photosURL: URL(fileURLWithPath: photosPath, isDirectory: true),
                         videosURL: URL(fileURLWithPath: videosPath, isDirectory: true)
                     ),
-                    reportsDirectoryURL: reportsURL
+                    reportsDirectoryURL: reportsURL,
+                    portableReceiptsEnabled: portableImportReceiptsEnabled
                 )
                 let summary = try scanner.scan(request) {
                     Task.isCancelled
@@ -675,7 +680,13 @@ final class AppModel: ObservableObject {
                     self.applyRecommendationAfterScan(files: files, summary: summary)
                     self.rebuildPreviewSessions(files: files, defaultLabel: location)
                     self.rebuildPreviewPlanCache()
-                    self.statusMessage = "Scan complete"
+                    if let warning = summary.portableReceiptWarning {
+                        self.statusMessage = "Scan complete. \(warning)"
+                    } else if let portableKnownFiles = summary.portableKnownFiles, portableKnownFiles > 0 {
+                        self.statusMessage = "Scan complete. \(portableKnownFiles) files were imported on another Mac"
+                    } else {
+                        self.statusMessage = "Scan complete"
+                    }
                     self.isWorking = false
                     self.importTask = nil
                 }
@@ -1077,6 +1088,7 @@ final class AppModel: ObservableObject {
         )
         let fallbackLocation = Self.defaultSessionLabel(for: location)
         let volumeName = currentSummary.volumeName
+        let portableImportReceiptsEnabled = portableImportReceiptsEnabled
 
         rememberWorkflowPreferenceForCurrentVolume()
         savePreferences()
@@ -1084,6 +1096,7 @@ final class AppModel: ObservableObject {
         startImport(
             jobID: jobID,
             databaseURL: databaseURL,
+            portableImportReceiptsEnabled: portableImportReceiptsEnabled,
             planMode: .rebuild(
                 ImportPlanBuilder(
                     sessions: sessions,
@@ -1097,9 +1110,71 @@ final class AppModel: ObservableObject {
         )
     }
 
+    func importPortableKnownFilesAnyway() {
+        guard !isWorking else {
+            statusMessage = "Finish the current scan or import first"
+            return
+        }
+        guard let jobID = currentSummary?.jobID, let databaseURL else {
+            statusMessage = "No scanned job selected"
+            return
+        }
+
+        let portableOverrideIDs = Set(previewRows.filter { $0.status == "Other Mac" }.map(\.id))
+        let updates = currentPreviewFiles.compactMap { file -> JobFilePlanUpdate? in
+            guard
+                file.knownSource == .portableLedger,
+                let id = file.id,
+                portableOverrideIDs.contains(id)
+            else {
+                return nil
+            }
+            return JobFilePlanUpdate(
+                id: id,
+                decision: .new,
+                destinationDirectory: nil,
+                plannedDestinationPath: nil,
+                copyStatus: .pending,
+                error: nil,
+                portableReceiptOverride: true
+            )
+        }
+        guard !updates.isEmpty else {
+            return
+        }
+
+        isWorking = true
+        statusMessage = "Preparing files imported on another Mac..."
+        importTask = Task.detached(priority: .userInitiated) {
+            do {
+                let repositories = try Self.makeRepositories(databaseURL: databaseURL)
+                try repositories.jobRepository.updateJobFileImportPlan(jobID: jobID, updates: updates)
+                let files = try repositories.jobRepository.fetchJobFiles(jobID: jobID)
+                let jobs = try repositories.jobRepository.listImportHistoryJobs(limit: 100)
+
+                await MainActor.run {
+                    self.currentPreviewFiles = files
+                    self.selectedJobFiles = files
+                    self.jobs = jobs
+                    self.rebuildPreviewPlanCache()
+                    self.statusMessage = "Portable receipt overridden for \(updates.count) files"
+                    self.isWorking = false
+                    self.importTask = nil
+                }
+            } catch {
+                await MainActor.run {
+                    self.statusMessage = "Could not override portable history: \(error)"
+                    self.isWorking = false
+                    self.importTask = nil
+                }
+            }
+        }
+    }
+
     private func startImport(
         jobID: String,
         databaseURL: URL,
+        portableImportReceiptsEnabled: Bool? = nil,
         planMode: ImportPlanMode
     ) {
         isWorking = true
@@ -1110,6 +1185,8 @@ final class AppModel: ObservableObject {
         ejectedSourceVolumeCount = 0
         statusMessage = "Preparing import..."
         importLogger.info("Import started jobID=\(jobID, privacy: .private)")
+        let portableImportReceiptsEnabled = portableImportReceiptsEnabled
+            ?? self.portableImportReceiptsEnabled
 
         importTask = Task.detached(priority: .userInitiated) {
             do {
@@ -1128,7 +1205,8 @@ final class AppModel: ObservableObject {
 
                 let engine = ImportEngine(
                     jobRepository: repositories.jobRepository,
-                    dedupeRepository: repositories.dedupeRepository
+                    dedupeRepository: repositories.dedupeRepository,
+                    portableReceiptsEnabled: portableImportReceiptsEnabled
                 )
                 var latestProgress: ImportProgress?
                 var lastPublishedAt = Date(timeIntervalSince1970: 0)
@@ -1176,7 +1254,9 @@ final class AppModel: ObservableObject {
                     } else {
                         self.rebuildPreviewPlanCache()
                     }
-                    self.statusMessage = "Import finished"
+                    self.statusMessage = result.portableReceiptWarning.map {
+                        "Import finished. \($0)"
+                    } ?? "Import finished"
                     self.isWorking = false
                     self.importTask = nil
                     if self.ejectAfterSuccessfulImport, self.canEjectSource(for: result) {
@@ -2053,6 +2133,7 @@ final class AppModel: ObservableObject {
         historyRetention = configuration.historyRetention
         autoPromptEnabled = configuration.autoPromptEnabled
         ejectAfterSuccessfulImport = configuration.ejectAfterSuccessfulImport
+        portableImportReceiptsEnabled = configuration.portableImportReceiptsEnabled
         hasCompletedOnboarding = configuration.hasCompletedOnboarding
         workflowProfile = configuration.lastWorkflowProfile
         importMediaSelection = configuration.lastMediaSelection
@@ -2079,6 +2160,7 @@ final class AppModel: ObservableObject {
             historyRetention: historyRetention,
             autoPromptEnabled: autoPromptEnabled,
             ejectAfterSuccessfulImport: ejectAfterSuccessfulImport,
+            portableImportReceiptsEnabled: portableImportReceiptsEnabled,
             hasCompletedOnboarding: hasCompletedOnboarding,
             lastWorkflowProfile: workflowProfile,
             lastMediaSelection: importMediaSelection,
@@ -2360,6 +2442,7 @@ private enum DefaultsKeys {
     static let location = "SDImport.location"
     static let autoPromptEnabled = "SDImport.autoPromptEnabled"
     static let ejectAfterSuccessfulImport = "SDImport.ejectAfterSuccessfulImport"
+    static let portableImportReceiptsEnabled = "SDImport.portableImportReceiptsEnabled"
     static let hasCompletedOnboarding = "SDImport.hasCompletedOnboarding"
     static let workflowProfile = "SDImport.workflowProfile"
     static let importMediaSelection = "SDImport.importMediaSelection"

@@ -18,6 +18,7 @@ struct SettingsRepositoryTests {
             historyRetention: .days(365),
             autoPromptEnabled: true,
             ejectAfterSuccessfulImport: true,
+            portableImportReceiptsEnabled: true,
             hasCompletedOnboarding: true,
             lastWorkflowProfile: .footageBackup,
             lastMediaSelection: .videosOnly,
@@ -55,6 +56,7 @@ struct SettingsRepositoryTests {
 
         #expect(configuration.lastWorkflowProfile == .mixedShootSession)
         #expect(configuration.ejectAfterSuccessfulImport == false)
+        #expect(configuration.portableImportReceiptsEnabled == false)
         #expect(configuration.lastMediaSelection == .photosAndVideos)
         #expect(configuration.lastDestinationLayout == .singleLibrary)
         #expect(configuration.preferredMixedDestinationLayout == .singleLibrary)

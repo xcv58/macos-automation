@@ -10,6 +10,9 @@ struct ScanSummaryView: View {
                 MetricView(title: "Scanned", value: summary.scannedFiles)
                 MetricView(title: "New", value: summary.newFiles)
                 MetricView(title: "Known", value: summary.knownFiles)
+                if let portableKnownFiles = summary.portableKnownFiles, portableKnownFiles > 0 {
+                    MetricView(title: "Other Mac", value: portableKnownFiles)
+                }
                 MetricView(title: "Conflicts", value: summary.conflictFiles)
                 MetricView(title: "Unsupported", value: summary.unsupportedFiles)
             }
@@ -18,6 +21,24 @@ struct ScanSummaryView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .textSelection(.enabled)
+
+            if let warning = summary.portableReceiptWarning {
+                AppStatusLabel(
+                    title: warning,
+                    systemImage: "exclamationmark.triangle",
+                    role: .warning
+                )
+                    .font(.callout)
+            } else if let portableKnownFiles = summary.portableKnownFiles, portableKnownFiles > 0 {
+                AppStatusLabel(
+                    title: portableKnownFiles == 1
+                        ? "1 file was previously imported on another Mac"
+                        : "\(portableKnownFiles) files were previously imported on another Mac",
+                    systemImage: "externaldrive.badge.checkmark",
+                    role: .neutral
+                )
+                    .font(.callout)
+            }
         }
     }
 }

@@ -1,6 +1,6 @@
 # SD Import Privacy Policy
 
-Last updated: 2026-05-10
+Last updated: 2026-07-31
 
 SD Import is a local macOS utility for copying photos and videos from SD cards
 or selected source folders into user-selected destinations.
@@ -27,6 +27,15 @@ The stored data can include:
 
 Imported photos and videos are copied to the destination folders you choose.
 SD Import does not delete files from the source card.
+
+If you enable `Store portable import receipts on source drives`, SD Import also
+creates or appends a hidden `.sd-import/imported-v1.jsonl` file on writable
+sources. It stores versioned file fingerprints, relative source paths, sizes,
+modification timestamps, import timestamps, and validation checksums so another
+Mac can avoid duplicate imports. It does not store destination paths, usernames,
+or media contents in this portable ledger. The option is disabled by default,
+and read-only sources continue without writing portable history. Ledger access
+refuses symbolic-link redirection outside the selected source.
 
 ## Network Use
 

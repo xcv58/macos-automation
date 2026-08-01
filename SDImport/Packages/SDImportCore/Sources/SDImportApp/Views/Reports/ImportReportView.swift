@@ -427,7 +427,16 @@ private struct ReportFileRow: View {
         case .copied:
             return "Copied"
         case .skipped:
-            return "Skipped"
+            switch file.knownSource {
+            case .portableLedger:
+                return "Other Mac"
+            case .localLedger:
+                return "Known"
+            case .destination:
+                return "Already Exists"
+            case nil:
+                return "Skipped"
+            }
         case .failed:
             return "Failed"
         }

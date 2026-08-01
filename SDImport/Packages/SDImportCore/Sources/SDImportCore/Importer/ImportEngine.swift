@@ -10,6 +10,7 @@ public struct ImportEngine {
     private let copyEngine: CopyEngine
     private let destinationSpaceChecker: DestinationSpaceChecker
     private let reportWriter: ReportWriter
+    private let portableReceiptsEnabled: Bool
 
     public init(
         fileManager: FileManager = .default,
@@ -18,7 +19,8 @@ public struct ImportEngine {
         conflictResolver: ConflictResolver = ConflictResolver(),
         copyEngine: CopyEngine = CopyEngine(),
         destinationSpaceChecker: DestinationSpaceChecker = DestinationSpaceChecker(),
-        reportWriter: ReportWriter = ReportWriter()
+        reportWriter: ReportWriter = ReportWriter(),
+        portableReceiptsEnabled: Bool = false
     ) {
         self.fileManager = fileManager
         self.jobRepository = jobRepository
@@ -27,6 +29,7 @@ public struct ImportEngine {
         self.copyEngine = copyEngine
         self.destinationSpaceChecker = destinationSpaceChecker
         self.reportWriter = reportWriter
+        self.portableReceiptsEnabled = portableReceiptsEnabled
     }
 
     @discardableResult
@@ -55,10 +58,78 @@ public struct ImportEngine {
         var recentFiles: [ImportProgressFileEvent] = []
         var progressEventSequence = 0
         let destinationDirectories = Self.destinationDirectories(for: files)
+        let portableLedger = PortableImportReceiptLedger(
+            sourceRootURL: URL(fileURLWithPath: job.mountPath, isDirectory: true)
+        )
+        var portableFingerprints: Set<String> = []
+        var portableReceiptWarning: String?
+        var portableWritesAvailable = portableReceiptsEnabled
+
+        func refreshPortableFingerprints() {
+            guard portableReceiptsEnabled else {
+                return
+            }
+            do {
+                let snapshot = try portableLedger.load()
+                portableFingerprints = snapshot.fingerprints
+                if let warning = snapshot.warning {
+                    portableReceiptWarning = warning
+                }
+            } catch {
+                portableFingerprints.removeAll()
+                portableWritesAvailable = false
+                portableReceiptWarning = "Portable import history is unavailable: \(error.localizedDescription)"
+            }
+        }
+
+        func hasPortableReceipt(_ identity: PortableFileIdentity?, file: JobFileRecord) -> Bool {
+            guard
+                portableReceiptsEnabled,
+                file.portableReceiptOverride != true,
+                let identity
+            else {
+                return false
+            }
+            let portableFingerprint = PortableImportReceiptLedger.portableFingerprint(for: identity)
+            return portableFingerprints.contains(portableFingerprint)
+        }
+
+        func recordPortableReceipt(_ identity: PortableFileIdentity?, file: JobFileRecord) {
+            guard
+                portableWritesAvailable,
+                let identity
+            else {
+                return
+            }
+            guard validatedPortableIdentity(for: file) == identity else {
+                portableReceiptWarning = "Portable import history was not updated because the source changed during import"
+                return
+            }
+            let portableFingerprint = PortableImportReceiptLedger.portableFingerprint(for: identity)
+            guard
+                !portableFingerprints.contains(portableFingerprint)
+            else {
+                return
+            }
+            do {
+                try portableLedger.append(identity: identity)
+                portableFingerprints.insert(portableFingerprint)
+            } catch {
+                portableWritesAvailable = false
+                portableReceiptWarning = "Portable import history could not be updated: \(error.localizedDescription)"
+            }
+        }
+
+        refreshPortableFingerprints()
 
         let filesNeedingDestinationSpace = try files.filter { file in
-            let fingerprint = fingerprint(for: file)
-            if try dedupeRepository.contains(fingerprint) {
+            guard let portableIdentity = validatedPortableIdentity(for: file) else {
+                return false
+            }
+            let fingerprint = fingerprint(for: file, currentIdentity: portableIdentity)
+            if try dedupeRepository.contains(fingerprint)
+                || hasPortableReceipt(portableIdentity, file: file)
+            {
                 return false
             }
             guard let plannedDestinationPath = file.plannedDestinationPath else {
@@ -201,7 +272,25 @@ public struct ImportEngine {
                 continue
             }
 
-            let fingerprint = fingerprint(for: file)
+            guard let portableIdentity = validatedPortableIdentity(for: file) else {
+                failedFiles += 1
+                doneFiles += 1
+                processedBytes += file.size
+                let detail = "source changed since scan; rescan required"
+                try jobRepository.updateFileCopyStatus(
+                    id: fileID,
+                    status: .failed,
+                    error: detail
+                )
+                currentFile = nil
+                currentDestinationPath = nil
+                activeFileBytes = 0
+                recordFileEvent(file: file, status: .failed, detail: detail, destinationPath: nil)
+                emit(status: "copying")
+                continue
+            }
+            let fingerprint = fingerprint(for: file, currentIdentity: portableIdentity)
+            refreshPortableFingerprints()
 
             if try dedupeRepository.contains(fingerprint) {
                 skippedFiles += 1
@@ -210,7 +299,8 @@ public struct ImportEngine {
                 try jobRepository.updateFileCopyStatus(
                     id: fileID,
                     status: .skipped,
-                    error: "already_imported_fingerprint"
+                    error: "already_imported_fingerprint",
+                    knownSource: .localLedger
                 )
                 currentFile = nil
                 currentDestinationPath = nil
@@ -219,6 +309,29 @@ public struct ImportEngine {
                     file: file,
                     status: .skipped,
                     detail: "Already imported",
+                    destinationPath: file.plannedDestinationPath
+                )
+                emit(status: "copying")
+                continue
+            }
+
+            if hasPortableReceipt(portableIdentity, file: file) {
+                skippedFiles += 1
+                doneFiles += 1
+                processedBytes += file.size
+                try jobRepository.updateFileCopyStatus(
+                    id: fileID,
+                    status: .skipped,
+                    error: "already_imported_portable_receipt",
+                    knownSource: .portableLedger
+                )
+                currentFile = nil
+                currentDestinationPath = nil
+                activeFileBytes = 0
+                recordFileEvent(
+                    file: file,
+                    status: .skipped,
+                    detail: "Imported on another Mac",
                     destinationPath: file.plannedDestinationPath
                 )
                 emit(status: "copying")
@@ -242,13 +355,15 @@ public struct ImportEngine {
                 try jobRepository.updateFileCopyStatus(
                     id: fileID,
                     status: .skipped,
-                    error: reason
+                    error: reason,
+                    knownSource: .destination
                 )
                 try dedupeRepository.recordImported(
                     fingerprint,
                     jobID: jobID,
                     sourcePath: file.sourcePath
                 )
+                recordPortableReceipt(portableIdentity, file: file)
                 recordFileEvent(
                     file: file,
                     status: .skipped,
@@ -285,6 +400,7 @@ public struct ImportEngine {
                         jobID: jobID,
                         sourcePath: file.sourcePath
                     )
+                    recordPortableReceipt(portableIdentity, file: file)
                     recordFileEvent(
                         file: file,
                         status: .copied,
@@ -332,7 +448,8 @@ public struct ImportEngine {
             importedFiles: importedFiles,
             skippedFiles: skippedFiles,
             failedFiles: failedFiles,
-            progressPath: nil
+            progressPath: nil,
+            portableReceiptWarning: portableReceiptWarning
         )
     }
 
@@ -363,8 +480,21 @@ public struct ImportEngine {
             .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
     }
 
-    private func fingerprint(for file: JobFileRecord) -> FileFingerprint {
-        FileFingerprint(
+    private func fingerprint(
+        for file: JobFileRecord,
+        currentIdentity: PortableFileIdentity
+    ) -> FileFingerprint {
+        if file.modificationTimeEpochSeconds == nil {
+            return FileFingerprint.compute(
+                size: currentIdentity.size,
+                modificationDate: Date(timeIntervalSince1970: TimeInterval(
+                    currentIdentity.modificationTimeEpochSeconds
+                )),
+                identityHint: currentIdentity.relativePath
+            )
+        }
+
+        return FileFingerprint(
             size: file.size,
             modificationDate: modificationDate(from: file.modificationDateString) ?? Date(timeIntervalSince1970: 0),
             modificationDateString: file.modificationDateString,
@@ -375,6 +505,29 @@ public struct ImportEngine {
                 identityHint: file.relativePath ?? file.filename
             ).value
         )
+    }
+
+    private func validatedPortableIdentity(for file: JobFileRecord) -> PortableFileIdentity? {
+        guard
+            let attributes = try? fileManager.attributesOfItem(atPath: file.sourcePath),
+            let size = (attributes[.size] as? NSNumber)?.int64Value,
+            size == file.size,
+            let modificationDate = attributes[.modificationDate] as? Date
+        else {
+            return nil
+        }
+        let identity = PortableFileIdentity(
+            size: size,
+            modificationDate: modificationDate,
+            relativePath: file.relativePath ?? file.filename
+        )
+        guard
+            file.modificationTimeEpochSeconds == nil
+                || file.modificationTimeEpochSeconds == identity.modificationTimeEpochSeconds
+        else {
+            return nil
+        }
+        return identity
     }
 
     private func rewriteReportIfPossible(jobID: String) {

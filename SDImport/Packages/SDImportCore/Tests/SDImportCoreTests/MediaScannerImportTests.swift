@@ -40,6 +40,438 @@ struct MediaScannerImportTests {
         #expect(summary2.knownFiles == 1)
     }
 
+    @Test("portable receipts prevent duplicate imports on another Mac")
+    func portableReceiptsWorkAcrossLocalDatabases() throws {
+        let first = try Fixture()
+        let source = first.mountURL.appendingPathComponent("DCIM/IMG_PORTABLE.JPG")
+        try first.writeFile(source, bytes: Data("portable-image-bytes".utf8))
+
+        let firstScanner = MediaScanner(
+            captureDateReader: FixedCaptureDateReader(fixedDate: "2024-07-15"),
+            jobRepository: first.jobRepository,
+            dedupeRepository: first.dedupeRepository
+        )
+        let firstEngine = ImportEngine(
+            jobRepository: first.jobRepository,
+            dedupeRepository: first.dedupeRepository,
+            portableReceiptsEnabled: true
+        )
+        _ = try firstScanner.scan(
+            ScanRequest(
+                mountURL: first.mountURL,
+                volumeName: "CARD",
+                location: "TEST",
+                roots: DestinationRoots(photosURL: first.photosURL, videosURL: first.videosURL),
+                reportsDirectoryURL: first.reportsURL,
+                jobID: "job-portable-first",
+                portableReceiptsEnabled: true
+            )
+        )
+        let firstResult = try firstEngine.importFiles(jobID: "job-portable-first")
+        #expect(firstResult.importedFiles == 1)
+        #expect(firstResult.portableReceiptWarning == nil)
+
+        let secondPool = try migratedPool()
+        let secondJobRepository = JobRepository(pool: secondPool)
+        let secondDedupeRepository = DedupeRepository(pool: secondPool)
+        let secondPhotosURL = first.rootURL.appendingPathComponent("second-photos", isDirectory: true)
+        let secondVideosURL = first.rootURL.appendingPathComponent("second-videos", isDirectory: true)
+        let secondScanner = MediaScanner(
+            captureDateReader: FixedCaptureDateReader(fixedDate: "2024-07-15"),
+            jobRepository: secondJobRepository,
+            dedupeRepository: secondDedupeRepository
+        )
+
+        let secondSummary = try secondScanner.scan(
+            ScanRequest(
+                mountURL: first.mountURL,
+                volumeName: "CARD",
+                location: "TEST",
+                roots: DestinationRoots(photosURL: secondPhotosURL, videosURL: secondVideosURL),
+                jobID: "job-portable-second",
+                portableReceiptsEnabled: true
+            )
+        )
+        let secondFiles = try secondJobRepository.fetchJobFiles(jobID: "job-portable-second")
+
+        #expect(secondSummary.newFiles == 0)
+        #expect(secondSummary.knownFiles == 1)
+        #expect(secondSummary.portableKnownFiles == 1)
+        #expect(secondFiles.first?.knownSource == .portableLedger)
+    }
+
+    @Test("import rechecks portable receipts added after scanning")
+    func importRechecksPortableReceiptsAfterScan() throws {
+        let fixture = try Fixture()
+        let bytes = Data("stale-scan-image-bytes".utf8)
+        let source = fixture.mountURL.appendingPathComponent("DCIM/IMG_STALE.JPG")
+        try fixture.writeFile(source, bytes: bytes)
+        _ = try fixture.scanner.scan(
+            ScanRequest(
+                mountURL: fixture.mountURL,
+                volumeName: "CARD",
+                location: "TEST",
+                roots: DestinationRoots(photosURL: fixture.photosURL, videosURL: fixture.videosURL),
+                jobID: "job-portable-stale",
+                portableReceiptsEnabled: true
+            )
+        )
+
+        let modificationDate = try #require(
+            FileManager.default.attributesOfItem(atPath: source.path)[.modificationDate] as? Date
+        )
+        let identity = PortableFileIdentity(
+            size: Int64(bytes.count),
+            modificationDate: modificationDate,
+            relativePath: "DCIM/IMG_STALE.JPG"
+        )
+        try PortableImportReceiptLedger(sourceRootURL: fixture.mountURL).append(
+            identity: identity
+        )
+
+        let photosPath = fixture.photosURL.path
+        let engine = ImportEngine(
+            jobRepository: fixture.jobRepository,
+            dedupeRepository: fixture.dedupeRepository,
+            destinationSpaceChecker: DestinationSpaceChecker { _ in
+                VolumeCapacity(
+                    volumeID: "no-space-needed",
+                    displayPath: photosPath,
+                    availableBytes: 0,
+                    totalBytes: 0
+                )
+            },
+            portableReceiptsEnabled: true
+        )
+        let result = try engine.importFiles(jobID: "job-portable-stale")
+        let file = try #require(fixture.jobRepository.fetchJobFiles(jobID: "job-portable-stale").first)
+
+        #expect(result.importedFiles == 0)
+        #expect(result.skippedFiles == 1)
+        #expect(file.copyStatus == .skipped)
+        #expect(file.error == "already_imported_portable_receipt")
+        #expect(file.knownSource == .portableLedger)
+        #expect(
+            FileManager.default.fileExists(
+                atPath: fixture.photosURL
+                    .appendingPathComponent("2024-07-15 TEST", isDirectory: true)
+                    .appendingPathComponent("IMG_STALE.JPG")
+                    .path
+            ) == false
+        )
+    }
+
+    @Test("source changes after scan require a rescan before portable dedupe")
+    func changedSourceDoesNotMatchStalePortableReceipt() throws {
+        let fixture = try Fixture()
+        let originalBytes = Data("original".utf8)
+        let changedBytes = Data("modified".utf8)
+        #expect(originalBytes.count == changedBytes.count)
+        let source = fixture.mountURL.appendingPathComponent("DCIM/IMG_CHANGED.JPG")
+        try fixture.writeFile(source, bytes: originalBytes)
+        _ = try fixture.scanner.scan(
+            ScanRequest(
+                mountURL: fixture.mountURL,
+                volumeName: "CARD",
+                location: "TEST",
+                roots: DestinationRoots(photosURL: fixture.photosURL, videosURL: fixture.videosURL),
+                jobID: "job-portable-source-changed",
+                portableReceiptsEnabled: true
+            )
+        )
+        let scannedFile = try #require(
+            fixture.jobRepository.fetchJobFiles(jobID: "job-portable-source-changed").first
+        )
+        let scannedEpoch = try #require(scannedFile.modificationTimeEpochSeconds)
+        try PortableImportReceiptLedger(sourceRootURL: fixture.mountURL).append(
+            identity: PortableFileIdentity(
+                size: Int64(originalBytes.count),
+                modificationTimeEpochSeconds: scannedEpoch,
+                relativePath: "DCIM/IMG_CHANGED.JPG"
+            )
+        )
+
+        try changedBytes.write(to: source)
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date(timeIntervalSince1970: TimeInterval(scannedEpoch + 60))],
+            ofItemAtPath: source.path
+        )
+
+        let result = try ImportEngine(
+            jobRepository: fixture.jobRepository,
+            dedupeRepository: fixture.dedupeRepository,
+            portableReceiptsEnabled: true
+        ).importFiles(jobID: "job-portable-source-changed")
+        let finalFile = try #require(
+            fixture.jobRepository.fetchJobFiles(jobID: "job-portable-source-changed").first
+        )
+
+        #expect(result.importedFiles == 0)
+        #expect(result.skippedFiles == 0)
+        #expect(result.failedFiles == 1)
+        #expect(finalFile.copyStatus == .failed)
+        #expect(finalFile.error == "source changed since scan; rescan required")
+        #expect(
+            FileManager.default.fileExists(atPath: scannedFile.plannedDestinationPath ?? "") == false
+        )
+    }
+
+    @Test("import anyway override bypasses an import-time portable receipt")
+    func importAnywayBypassesPortableReceiptRecheck() throws {
+        let fixture = try Fixture()
+        let bytes = Data("portable-override-image-bytes".utf8)
+        let source = fixture.mountURL.appendingPathComponent("DCIM/IMG_OVERRIDE.JPG")
+        try fixture.writeFile(source, bytes: bytes)
+        let modificationDate = try #require(
+            FileManager.default.attributesOfItem(atPath: source.path)[.modificationDate] as? Date
+        )
+        let identity = PortableFileIdentity(
+            size: Int64(bytes.count),
+            modificationDate: modificationDate,
+            relativePath: "DCIM/IMG_OVERRIDE.JPG"
+        )
+        try PortableImportReceiptLedger(sourceRootURL: fixture.mountURL).append(
+            identity: identity
+        )
+        _ = try fixture.scanner.scan(
+            ScanRequest(
+                mountURL: fixture.mountURL,
+                volumeName: "CARD",
+                location: "TEST",
+                roots: DestinationRoots(photosURL: fixture.photosURL, videosURL: fixture.videosURL),
+                jobID: "job-portable-override",
+                portableReceiptsEnabled: true
+            )
+        )
+
+        let file = try #require(
+            fixture.jobRepository.fetchJobFiles(jobID: "job-portable-override").first
+        )
+        let fileID = try #require(file.id)
+        #expect(file.knownSource == .portableLedger)
+        try fixture.jobRepository.updateJobFileImportPlan(
+            jobID: "job-portable-override",
+            updates: [
+                JobFilePlanUpdate(
+                    id: fileID,
+                    decision: .new,
+                    destinationDirectory: nil,
+                    plannedDestinationPath: nil,
+                    copyStatus: .pending,
+                    error: nil,
+                    portableReceiptOverride: true
+                )
+            ]
+        )
+
+        let overriddenFile = try #require(
+            fixture.jobRepository.fetchJobFiles(jobID: "job-portable-override").first
+        )
+        let builder = ImportPlanBuilder(
+            sessions: [
+                ImportPlanSession(
+                    date: "2024-07-15",
+                    label: "TEST",
+                    photoCount: 1,
+                    videoCount: 0,
+                    unsupportedCount: 0,
+                    includePhotos: true,
+                    includeVideos: false,
+                    includeSidecars: false
+                )
+            ],
+            organizationPreset: .shootSessionsByDate,
+            roots: DestinationRoots(photosURL: fixture.photosURL, videosURL: fixture.videosURL),
+            fallbackLocation: "TEST",
+            volumeName: "CARD"
+        )
+        try fixture.jobRepository.updateJobFileImportPlan(
+            jobID: "job-portable-override",
+            updates: builder.updates(files: [overriddenFile])
+        )
+        let replannedFile = try #require(
+            fixture.jobRepository.fetchJobFiles(jobID: "job-portable-override").first
+        )
+        #expect(replannedFile.portableReceiptOverride == true)
+
+        let result = try ImportEngine(
+            jobRepository: fixture.jobRepository,
+            dedupeRepository: fixture.dedupeRepository,
+            portableReceiptsEnabled: true
+        ).importFiles(jobID: "job-portable-override")
+
+        #expect(result.importedFiles == 1)
+        #expect(result.skippedFiles == 0)
+        let importedFile = try #require(
+            fixture.jobRepository.fetchJobFiles(jobID: "job-portable-override").first
+        )
+        let finalDestinationPath = try #require(importedFile.finalDestinationPath)
+        #expect(
+            FileManager.default.fileExists(atPath: finalDestinationPath)
+        )
+    }
+
+    @Test("import uses persisted epoch instead of parsing the display timestamp")
+    func importPortableIdentityUsesPersistedEpoch() throws {
+        let fixture = try Fixture()
+        let bytes = Data("epoch-identity-image-bytes".utf8)
+        let source = fixture.mountURL.appendingPathComponent("DCIM/IMG_EPOCH.JPG")
+        try fixture.writeFile(source, bytes: bytes)
+        let modificationDate = try #require(
+            FileManager.default.attributesOfItem(atPath: source.path)[.modificationDate] as? Date
+        )
+        let epochSeconds = Int64(floor(modificationDate.timeIntervalSince1970))
+        let relativePath = "DCIM/IMG_EPOCH.JPG"
+        let identity = PortableFileIdentity(
+            size: Int64(bytes.count),
+            modificationTimeEpochSeconds: epochSeconds,
+            relativePath: relativePath
+        )
+        try PortableImportReceiptLedger(sourceRootURL: fixture.mountURL).append(identity: identity)
+
+        let jobID = "job-portable-epoch"
+        try fixture.jobRepository.insertJob(
+            ImportJob(
+                id: jobID,
+                createdAt: Date(),
+                mountPath: fixture.mountURL.path,
+                volumeName: "CARD",
+                location: "TEST",
+                photosRoot: fixture.photosURL.path,
+                videosRoot: fixture.videosURL.path,
+                status: .scanned,
+                scannedFiles: 1,
+                newFiles: 1
+            )
+        )
+        let destinationDirectory = fixture.photosURL.appendingPathComponent("2024-07-15 TEST")
+        try fixture.jobRepository.insertJobFile(
+            JobFileRecord(
+                jobID: jobID,
+                sourcePath: source.path,
+                relativePath: relativePath,
+                filename: "IMG_EPOCH.JPG",
+                ext: ".jpg",
+                size: Int64(bytes.count),
+                modificationDateString: "1970-01-01T00:00:00",
+                modificationTimeEpochSeconds: epochSeconds,
+                mediaKind: .photo,
+                fingerprint: nil,
+                captureDate: "2024-07-15",
+                decision: .new,
+                destinationDirectory: destinationDirectory.path,
+                plannedDestinationPath: destinationDirectory.appendingPathComponent("IMG_EPOCH.JPG").path,
+                copyStatus: .pending
+            )
+        )
+
+        let result = try ImportEngine(
+            jobRepository: fixture.jobRepository,
+            dedupeRepository: fixture.dedupeRepository,
+            portableReceiptsEnabled: true
+        ).importFiles(jobID: jobID)
+
+        #expect(result.importedFiles == 0)
+        #expect(result.skippedFiles == 1)
+        let file = try #require(fixture.jobRepository.fetchJobFiles(jobID: jobID).first)
+        #expect(file.knownSource == .portableLedger)
+    }
+
+    @Test("enabling portable receipts backfills local dedupe history")
+    func portableReceiptsBackfillLocalHistory() throws {
+        let fixture = try Fixture()
+        let source = fixture.mountURL.appendingPathComponent("IMG_BACKFILL.JPG")
+        try fixture.writeFile(source, bytes: Data("backfill-image-bytes".utf8))
+
+        _ = try fixture.scanner.scan(fixture.scanRequest(jobID: "job-backfill-import"))
+        _ = try fixture.importEngine.importFiles(jobID: "job-backfill-import")
+        let ledger = PortableImportReceiptLedger(sourceRootURL: fixture.mountURL)
+        #expect(FileManager.default.fileExists(atPath: ledger.ledgerURL.path) == false)
+
+        let summary = try fixture.scanner.scan(
+            ScanRequest(
+                mountURL: fixture.mountURL,
+                volumeName: "CARD",
+                location: "TEST",
+                roots: DestinationRoots(photosURL: fixture.photosURL, videosURL: fixture.videosURL),
+                jobID: "job-backfill-scan",
+                portableReceiptsEnabled: true
+            )
+        )
+
+        #expect(summary.knownFiles == 1)
+        #expect(summary.portableKnownFiles == 0)
+        #expect(try ledger.load().fingerprints.count == 1)
+    }
+
+    @Test("invalid portable ledger warns but does not fail the scan")
+    func invalidPortableLedgerDoesNotFailScan() throws {
+        let fixture = try Fixture()
+        let source = fixture.mountURL.appendingPathComponent("IMG_WARNING.JPG")
+        try fixture.writeFile(source, bytes: Data("warning-image-bytes".utf8))
+        let ledger = PortableImportReceiptLedger(sourceRootURL: fixture.mountURL)
+        try FileManager.default.createDirectory(at: ledger.ledgerURL, withIntermediateDirectories: true)
+
+        let summary = try fixture.scanner.scan(
+            ScanRequest(
+                mountURL: fixture.mountURL,
+                volumeName: "CARD",
+                location: "TEST",
+                roots: DestinationRoots(photosURL: fixture.photosURL, videosURL: fixture.videosURL),
+                jobID: "job-portable-warning",
+                portableReceiptsEnabled: true
+            )
+        )
+
+        #expect(summary.newFiles == 1)
+        #expect(summary.portableReceiptWarning?.contains("unavailable") == true)
+    }
+
+    @Test("read-only source imports successfully with a portable history warning")
+    func readOnlySourceDoesNotFailImport() throws {
+        let fixture = try Fixture()
+        let source = fixture.mountURL.appendingPathComponent("IMG_READ_ONLY.JPG")
+        try fixture.writeFile(source, bytes: Data("read-only-image-bytes".utf8))
+
+        let scanner = MediaScanner(
+            captureDateReader: FixedCaptureDateReader(fixedDate: "2024-07-15"),
+            jobRepository: fixture.jobRepository,
+            dedupeRepository: fixture.dedupeRepository
+        )
+        _ = try scanner.scan(
+            ScanRequest(
+                mountURL: fixture.mountURL,
+                volumeName: "CARD",
+                location: "TEST",
+                roots: DestinationRoots(photosURL: fixture.photosURL, videosURL: fixture.videosURL),
+                jobID: "job-read-only",
+                portableReceiptsEnabled: true
+            )
+        )
+
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o555],
+            ofItemAtPath: fixture.mountURL.path
+        )
+        defer {
+            try? FileManager.default.setAttributes(
+                [.posixPermissions: 0o755],
+                ofItemAtPath: fixture.mountURL.path
+            )
+        }
+
+        let engine = ImportEngine(
+            jobRepository: fixture.jobRepository,
+            dedupeRepository: fixture.dedupeRepository,
+            portableReceiptsEnabled: true
+        )
+        let result = try engine.importFiles(jobID: "job-read-only")
+
+        #expect(result.importedFiles == 1)
+        #expect(result.failedFiles == 0)
+        #expect(result.portableReceiptWarning?.contains("could not be updated") == true)
+    }
+
     @Test("scanner recognizes common camera RAW extensions")
     func scannerRecognizesCommonCameraRawExtensions() throws {
         let fixture = try Fixture()

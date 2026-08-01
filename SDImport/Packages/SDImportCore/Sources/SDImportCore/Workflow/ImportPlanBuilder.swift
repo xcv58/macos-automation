@@ -182,7 +182,7 @@ public struct ImportPlanBuilder: Sendable {
                     error: nil
                 ),
                 willCopy: false,
-                status: "Known",
+                status: file.knownSource == .portableLedger ? "Other Mac" : "Known",
                 destinationPath: file.plannedDestinationPath
             )
         }

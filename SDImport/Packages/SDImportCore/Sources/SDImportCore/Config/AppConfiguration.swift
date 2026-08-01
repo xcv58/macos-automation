@@ -10,6 +10,7 @@ public struct AppConfiguration: Codable, Equatable, Sendable {
     public var historyRetention: RetentionPolicy
     public var autoPromptEnabled: Bool
     public var ejectAfterSuccessfulImport: Bool
+    public var portableImportReceiptsEnabled: Bool
     public var hasCompletedOnboarding: Bool
     public var lastWorkflowProfile: ImportWorkflowProfile
     public var lastMediaSelection: ImportMediaSelection
@@ -28,6 +29,7 @@ public struct AppConfiguration: Codable, Equatable, Sendable {
         historyRetention: RetentionPolicy = .defaultPolicy,
         autoPromptEnabled: Bool = false,
         ejectAfterSuccessfulImport: Bool = false,
+        portableImportReceiptsEnabled: Bool = false,
         hasCompletedOnboarding: Bool = false,
         lastWorkflowProfile: ImportWorkflowProfile = .mixedShootSession,
         lastMediaSelection: ImportMediaSelection? = nil,
@@ -45,6 +47,7 @@ public struct AppConfiguration: Codable, Equatable, Sendable {
         self.historyRetention = historyRetention
         self.autoPromptEnabled = autoPromptEnabled
         self.ejectAfterSuccessfulImport = ejectAfterSuccessfulImport
+        self.portableImportReceiptsEnabled = portableImportReceiptsEnabled
         self.hasCompletedOnboarding = hasCompletedOnboarding
         self.lastWorkflowProfile = lastWorkflowProfile
         self.lastMediaSelection = lastMediaSelection ?? lastWorkflowProfile.mediaSelection
@@ -77,6 +80,7 @@ public struct AppConfiguration: Codable, Equatable, Sendable {
         case historyRetention
         case autoPromptEnabled
         case ejectAfterSuccessfulImport
+        case portableImportReceiptsEnabled
         case hasCompletedOnboarding
         case lastWorkflowProfile
         case lastMediaSelection
@@ -99,6 +103,10 @@ public struct AppConfiguration: Codable, Equatable, Sendable {
         ejectAfterSuccessfulImport = try container.decodeIfPresent(
             Bool.self,
             forKey: .ejectAfterSuccessfulImport
+        ) ?? false
+        portableImportReceiptsEnabled = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .portableImportReceiptsEnabled
         ) ?? false
         hasCompletedOnboarding = try container.decodeIfPresent(Bool.self, forKey: .hasCompletedOnboarding) ?? false
         lastWorkflowProfile = try container.decodeIfPresent(

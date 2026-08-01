@@ -151,6 +151,24 @@ struct SettingsView: View {
                                 .foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
+
+                        Divider()
+                            .padding(.vertical, 12)
+
+                        VStack(alignment: .leading, spacing: 5) {
+                            Toggle(
+                                "Store portable import receipts on source drives",
+                                isOn: $model.portableImportReceiptsEnabled
+                            )
+                            .onChange(of: model.portableImportReceiptsEnabled) {
+                                model.savePreferences()
+                            }
+
+                            Text("Writes a validated, hidden .sd-import ledger after successful copies and uses it to avoid duplicate imports on other Macs. Read-only sources continue without portable history.")
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
                 }
 
