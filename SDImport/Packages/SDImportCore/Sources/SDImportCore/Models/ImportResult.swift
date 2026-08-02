@@ -6,18 +6,21 @@ public struct ImportResult: Hashable, Codable, Sendable {
     public let skippedFiles: Int
     public let failedFiles: Int
     public let progressPath: String?
+    public let portableReceiptWarning: String?
 
     public init(
         jobID: String,
         importedFiles: Int,
         skippedFiles: Int,
         failedFiles: Int,
-        progressPath: String?
+        progressPath: String?,
+        portableReceiptWarning: String? = nil
     ) {
         self.jobID = jobID
         self.importedFiles = importedFiles
         self.skippedFiles = skippedFiles
         self.failedFiles = failedFiles
         self.progressPath = progressPath
+        self.portableReceiptWarning = portableReceiptWarning
     }
 }

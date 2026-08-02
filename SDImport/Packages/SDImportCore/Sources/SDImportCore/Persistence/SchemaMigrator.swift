@@ -2,9 +2,11 @@ import Foundation
 import GRDB
 
 public enum SchemaMigrator {
-    public static let currentUserVersion: Int32 = 2
+    public static let currentUserVersion: Int32 = 4
     public static let initialMigrationIdentifier = "v1_initial_schema"
     public static let identityScopedFingerprintMigrationIdentifier = "v2_identity_scoped_fingerprints"
+    public static let knownFileSourceMigrationIdentifier = "v3_known_file_source"
+    public static let portableReceiptIdentityMigrationIdentifier = "v4_portable_receipt_identity"
 
     public static func makeMigrator() -> DatabaseMigrator {
         var migrator = DatabaseMigrator()
@@ -54,6 +56,23 @@ public enum SchemaMigrator {
             }
 
             try db.execute(sql: "PRAGMA user_version = 2")
+        }
+
+        migrator.registerMigration(knownFileSourceMigrationIdentifier) { db in
+            try db.alter(table: "job_files") { table in
+                table.add(column: "known_source", .text)
+            }
+            try db.execute(sql: "PRAGMA user_version = 3")
+        }
+
+        migrator.registerMigration(portableReceiptIdentityMigrationIdentifier) { db in
+            try db.alter(table: "job_files") { table in
+                table.add(column: "mtime_epoch_seconds", .integer)
+                table.add(column: "portable_receipt_override", .boolean)
+                    .notNull()
+                    .defaults(to: false)
+            }
+            try db.execute(sql: "PRAGMA user_version = \(Self.currentUserVersion)")
         }
 
         return migrator

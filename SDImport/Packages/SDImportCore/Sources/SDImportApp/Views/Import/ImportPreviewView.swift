@@ -99,6 +99,8 @@ struct ImportPreviewView: View {
 
             importOptionControls
 
+            portableReceiptOverride
+
             if let warning = selectedMediaAvailabilityMessage {
                 AppStatusLabel(
                     title: warning,
@@ -106,6 +108,29 @@ struct ImportPreviewView: View {
                     role: .warning
                 )
                     .font(.caption)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var portableReceiptOverride: some View {
+        let count = model.previewRows.filter { $0.status == "Other Mac" }.count
+        if count > 0 {
+            HStack(spacing: 10) {
+                AppStatusLabel(
+                    title: count == 1
+                        ? "1 file was imported on another Mac"
+                        : "\(count) files were imported on another Mac",
+                    systemImage: "externaldrive.badge.checkmark",
+                    role: .neutral
+                )
+                    .font(.caption)
+
+                Button("Import Anyway") {
+                    model.importPortableKnownFilesAnyway()
+                }
+                .buttonStyle(.bordered)
+                .disabled(model.isWorking)
             }
         }
     }
@@ -425,6 +450,8 @@ struct ImportPreviewView: View {
             }
             .padding(.top, 2)
 
+            portableReceiptOverride
+
             HStack(spacing: 8) {
                 if canRecoverPhotos {
                     Button {
@@ -555,7 +582,7 @@ struct ImportPreviewView: View {
         if row.willCopy {
             return 1
         }
-        if row.status == "Known" || row.status == "Already exists" || row.status == "Copied" {
+        if isKnownStatus(row.status) {
             return 2
         }
         if row.status == "Unsupported" || row.mediaKind == .unsupported {
@@ -632,7 +659,7 @@ struct ImportPreviewView: View {
         if rows.contains(where: { $0.status == "Excluded" }) {
             return "Current selection excludes every matching file"
         }
-        if rows.contains(where: { $0.status == "Known" || $0.status == "Already exists" || $0.status == "Copied" }) {
+        if rows.contains(where: { isKnownStatus($0.status) }) {
             return "No new files to copy"
         }
         return "No files will be copied"
@@ -658,7 +685,7 @@ struct ImportPreviewView: View {
         if let summary = exclusionSummary(rows: rows) {
             return summary
         }
-        if rows.contains(where: { $0.status == "Known" || $0.status == "Already exists" || $0.status == "Copied" }) {
+        if rows.contains(where: { isKnownStatus($0.status) }) {
             return "The files in this preview are already imported, already copied, or already exist at the destination."
         }
         return "Review the selected media type and destination settings before importing."
@@ -716,7 +743,7 @@ struct ImportPreviewView: View {
     private func skipBreakdown(rows: [ImportPreviewRow]) -> ImportPreviewSkipBreakdown {
         ImportPreviewSkipBreakdown(
             knownFiles: rows.filter {
-                !$0.willCopy && ($0.status == "Known" || $0.status == "Already exists" || $0.status == "Copied")
+                !$0.willCopy && isKnownStatus($0.status)
             }.count,
             excludedFiles: rows.filter { !$0.willCopy && $0.status == "Excluded" }.count,
             sidecarFiles: rows.filter {
@@ -732,6 +759,10 @@ struct ImportPreviewView: View {
             return "\(required) needed, \(available) available at \(requirement.displayPath)"
         }
         return "Not enough space: \(required) needed, \(available) available at \(requirement.displayPath)"
+    }
+
+    private func isKnownStatus(_ status: String) -> Bool {
+        status == "Known" || status == "Other Mac" || status == "Already exists" || status == "Copied"
     }
 }
 

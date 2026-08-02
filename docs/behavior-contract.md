@@ -4,7 +4,8 @@ This document defines the current importer behavior that the native Swift app mu
 
 ## Product Invariants
 
-- The app never deletes, moves, renames, or mutates files on the source card.
+- The app never deletes, moves, renames, or mutates existing files on the source card.
+- When the user opts in to portable import receipts, the app may create or append only within `.sd-import` on the source.
 - Importing the same already-imported original again must not create duplicates.
 - Destination folder changes must not make known source files import again.
 - A failed or interrupted import must remain visible and retryable.
@@ -65,6 +66,23 @@ Rules:
 - A known file is skipped even if the original destination folder was renamed or deleted.
 - The dedupe ledger is not pruned by normal History retention.
 - Resetting the dedupe ledger must be an explicit advanced action.
+
+Optional portable receipt rules:
+
+- Portable receipts are disabled by default and control both reading and writing.
+- Receipts live in `.sd-import/imported-v1.jsonl` on the selected source root.
+- Each receipt contains only the exact relative source path, size, modification timestamp, import timestamp, schema metadata, and a checksum. It does not contain destination paths or usernames.
+- A valid portable receipt classifies the matching source file as known from another Mac.
+- Exact path spelling is part of portable identity; case-distinct or whitespace-distinct names do not collapse on case-sensitive sources.
+- Scan records the source modification time as epoch seconds for portable identity; import never reconstructs that identity from the timezone-less display timestamp. Older jobs without the epoch fall back to current source metadata.
+- Invalid, corrupted, oversized, or path-traversing records are ignored and surfaced as a warning.
+- Ledger records are decoded independently so a truncated or invalid UTF-8 record cannot hide earlier valid receipts.
+- Ledger access refuses symbolic-link traversal, stays relative to an opened source root, serializes writers, and separates an interrupted final record before the next append.
+- Read-only, locked, full, removed, or otherwise unwritable sources never fail the media import; portable history is skipped with a warning.
+- Import reloads portable history before copying pending files so receipts added after the original scan are honored.
+- Import verifies the source file's current size and modification epoch against the scan before dedupe or copy. Changed files fail with a rescan-required message, and source identity is checked again before a portable receipt is written.
+- A user can explicitly choose `Import Anyway` for files known only from portable receipts. That choice is stored separately from errors and survives destination replanning and retries.
+- Existing local dedupe entries are backfilled to a writable source when portable receipts are enabled.
 
 Known tradeoff:
 

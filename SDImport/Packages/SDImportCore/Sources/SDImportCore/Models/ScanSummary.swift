@@ -11,6 +11,8 @@ public struct ScanSummary: Hashable, Codable, Sendable {
     public let knownFiles: Int
     public let unsupportedFiles: Int
     public let conflictFiles: Int
+    public let portableKnownFiles: Int?
+    public let portableReceiptWarning: String?
 
     public init(
         jobID: String,
@@ -22,7 +24,9 @@ public struct ScanSummary: Hashable, Codable, Sendable {
         newFiles: Int,
         knownFiles: Int,
         unsupportedFiles: Int,
-        conflictFiles: Int
+        conflictFiles: Int,
+        portableKnownFiles: Int? = nil,
+        portableReceiptWarning: String? = nil
     ) {
         self.jobID = jobID
         self.mountPath = mountPath
@@ -34,5 +38,7 @@ public struct ScanSummary: Hashable, Codable, Sendable {
         self.knownFiles = knownFiles
         self.unsupportedFiles = unsupportedFiles
         self.conflictFiles = conflictFiles
+        self.portableKnownFiles = portableKnownFiles
+        self.portableReceiptWarning = portableReceiptWarning
     }
 }

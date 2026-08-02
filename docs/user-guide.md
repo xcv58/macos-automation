@@ -32,6 +32,7 @@ When the app opens:
 3. In `General`, keep Theme set to `System` unless you want to force Light or Dark.
 4. Leave `Prompt on card mount` on if you want SD Import to appear when you insert a card.
 5. Turn on `Eject source device after a successful import` if you want verified removable cards or cameras ejected automatically. It is off by default.
+6. Optionally turn on `Store portable import receipts on source drives` to share dedupe status between Macs. This writes a hidden `.sd-import` ledger to writable sources and is off by default.
 
 Default folder pattern:
 
@@ -44,6 +45,7 @@ Default folder pattern:
 1. Insert an SD card or connect a camera.
 2. SD Import scans the card and shows a preview.
 3. Review what is new, already imported, unsupported, or conflicting.
+   Files recognized only from portable history are labeled `Other Mac`; choose `Import Anyway` if you intentionally want another copy. The choice remains active while the app rebuilds the destination plan.
 4. Start the import.
 5. Keep the card connected until the progress finishes.
 6. Use the named eject action on the copy receipt, or wait for automatic ejection if you enabled it in Settings.
@@ -97,7 +99,9 @@ https://github.com/xcv58/sd-import/releases/latest
 ## Safety Notes
 
 - SD Import copies files; it does not erase the card.
-- Files already imported are skipped on future runs.
+- When portable receipts are enabled, SD Import writes only its hidden `.sd-import` ledger on the source. Locked and read-only sources continue with a warning.
+- Files already imported are skipped on future runs, including when portable history changes after the original scan. `Import Anyway` is available only for files recognized from portable history.
+- If a source file changes after scanning, SD Import stops that file and asks for a rescan instead of applying stale dedupe history.
 - If a destination file already exists but is different, SD Import keeps both files by adding a suffix.
 - Leave the app in `Applications` so updates can install correctly.
 

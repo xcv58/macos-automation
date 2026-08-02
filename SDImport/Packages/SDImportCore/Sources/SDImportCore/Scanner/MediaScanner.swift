@@ -8,6 +8,7 @@ public struct ScanRequest {
     public let roots: DestinationRoots
     public let reportsDirectoryURL: URL?
     public let jobID: String
+    public let portableReceiptsEnabled: Bool
 
     public init(
         mountURL: URL,
@@ -16,7 +17,8 @@ public struct ScanRequest {
         location: String,
         roots: DestinationRoots,
         reportsDirectoryURL: URL? = nil,
-        jobID: String = JobID.make()
+        jobID: String = JobID.make(),
+        portableReceiptsEnabled: Bool = false
     ) {
         self.mountURL = mountURL
         self.volumeName = volumeName
@@ -25,6 +27,7 @@ public struct ScanRequest {
         self.roots = roots
         self.reportsDirectoryURL = reportsDirectoryURL
         self.jobID = jobID
+        self.portableReceiptsEnabled = portableReceiptsEnabled
     }
 }
 
@@ -72,6 +75,23 @@ public struct MediaScanner {
         var knownFiles = 0
         var unsupportedFiles = 0
         var conflictFiles = 0
+        var portableKnownFiles = 0
+        var portableFingerprints: Set<String> = []
+        var portableIdentitiesToBackfill: [PortableFileIdentity] = []
+        var portableReceiptWarning: String?
+        var portableWritesAvailable = request.portableReceiptsEnabled
+        let portableLedger = PortableImportReceiptLedger(sourceRootURL: request.mountURL)
+
+        if request.portableReceiptsEnabled {
+            do {
+                let snapshot = try portableLedger.load()
+                portableFingerprints = snapshot.fingerprints
+                portableReceiptWarning = snapshot.warning
+            } catch {
+                portableWritesAvailable = false
+                portableReceiptWarning = "Portable import history is unavailable: \(error.localizedDescription)"
+            }
+        }
 
         for fileURL in try fileEnumerator.mediaCandidateFiles(in: request.mountURL, shouldCancel: shouldCancel) {
             if shouldCancel() {
@@ -92,7 +112,41 @@ public struct MediaScanner {
                 modificationDateString: modificationDateString,
                 identityHint: relativePath
             )
-            let alreadyImported = try dedupeRepository.contains(fingerprint)
+            let portableIdentity = PortableFileIdentity(
+                size: attributes.size,
+                modificationDate: attributes.modificationDate,
+                relativePath: relativePath
+            )
+            let locallyImported = try dedupeRepository.contains(fingerprint)
+            let portableFingerprint = PortableImportReceiptLedger.portableFingerprint(for: portableIdentity)
+            let portablyImported = request.portableReceiptsEnabled
+                && portableFingerprints.contains(portableFingerprint)
+            let shouldBackfillPortableReceipt = request.portableReceiptsEnabled
+                && portableWritesAvailable
+                && locallyImported
+                && !portablyImported
+            let exactlyImportedFromThisSource: Bool
+            if shouldBackfillPortableReceipt {
+                exactlyImportedFromThisSource = try dedupeRepository.containsExactSource(
+                    fingerprint,
+                    sourcePath: fileURL.path
+                )
+            } else {
+                exactlyImportedFromThisSource = false
+            }
+            let alreadyImported = locallyImported || portablyImported
+            var knownSource: KnownFileSource?
+            if locallyImported {
+                knownSource = .localLedger
+            } else if portablyImported {
+                knownSource = .portableLedger
+                portableKnownFiles += 1
+            }
+
+            if exactlyImportedFromThisSource {
+                portableIdentitiesToBackfill.append(portableIdentity)
+                portableFingerprints.insert(portableFingerprint)
+            }
 
             guard mediaKind != .unsupported else {
                 if alreadyImported {
@@ -109,10 +163,12 @@ public struct MediaScanner {
                         ext: ext,
                         size: attributes.size,
                         modificationDateString: modificationDateString,
+                        modificationTimeEpochSeconds: portableIdentity.modificationTimeEpochSeconds,
                         mediaKind: .unsupported,
                         fingerprint: fingerprint.value,
                         captureDate: nil,
                         decision: alreadyImported ? .known : .unsupported,
+                        knownSource: knownSource,
                         destinationDirectory: nil,
                         plannedDestinationPath: nil,
                         copyStatus: .skipped
@@ -147,6 +203,7 @@ public struct MediaScanner {
                 case .skip:
                     decision = .known
                     copyStatus = .skipped
+                    knownSource = .destination
                 case .copy(let resolvedURL):
                     if resolvedURL != destinationURL {
                         decision = .conflict
@@ -176,10 +233,12 @@ public struct MediaScanner {
                     ext: ext,
                     size: attributes.size,
                     modificationDateString: modificationDateString,
+                    modificationTimeEpochSeconds: portableIdentity.modificationTimeEpochSeconds,
                     mediaKind: mediaKind,
                     fingerprint: fingerprint.value,
                     captureDate: captureDate,
                     decision: decision,
+                    knownSource: knownSource,
                     destinationDirectory: destinationDirectory?.path,
                     plannedDestinationPath: destinationURL?.path,
                     copyStatus: copyStatus,
@@ -192,6 +251,21 @@ public struct MediaScanner {
             throw SDImportError.cancelled
         }
 
+        if portableWritesAvailable, !portableIdentitiesToBackfill.isEmpty {
+            do {
+                let appendResult = try portableLedger.appendReturningRevision(
+                    identities: portableIdentitiesToBackfill
+                )
+                if let warning = appendResult.warning, portableReceiptWarning != warning {
+                    portableReceiptWarning = [portableReceiptWarning, warning]
+                        .compactMap { $0 }
+                        .joined(separator: ". ")
+                }
+            } catch {
+                portableReceiptWarning = "Portable import history could not be updated: \(error.localizedDescription)"
+            }
+        }
+
         let summary = ScanSummary(
             jobID: request.jobID,
             mountPath: request.mountURL.path,
@@ -202,7 +276,9 @@ public struct MediaScanner {
             newFiles: newFiles,
             knownFiles: knownFiles,
             unsupportedFiles: unsupportedFiles,
-            conflictFiles: conflictFiles
+            conflictFiles: conflictFiles,
+            portableKnownFiles: portableKnownFiles,
+            portableReceiptWarning: portableReceiptWarning
         )
 
         let reportBaseURL = request.reportsDirectoryURL?.appendingPathComponent(request.jobID, isDirectory: false)

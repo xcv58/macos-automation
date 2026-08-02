@@ -331,7 +331,7 @@ private struct HistoryFileRow: View {
         case .copied:
             return "Copied"
         case .skipped:
-            return "Skipped"
+            return file.knownSource?.skippedStatusTitle ?? "Skipped"
         case .failed:
             return "Failed"
         }

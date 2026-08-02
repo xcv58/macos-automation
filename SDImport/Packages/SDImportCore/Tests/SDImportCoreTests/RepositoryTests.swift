@@ -60,13 +60,16 @@ struct RepositoryTests {
                 ext: ".jpg",
                 size: 17,
                 modificationDateString: "2023-11-14T22:13:20",
+                modificationTimeEpochSeconds: 1_700_000_000,
                 mediaKind: .photo,
                 fingerprint: "abc",
                 captureDate: "2024-07-15",
                 decision: .new,
+                knownSource: .portableLedger,
                 destinationDirectory: "/tmp/photos/2024-07-15 TEST",
                 plannedDestinationPath: "/tmp/photos/2024-07-15 TEST/IMG_0001.JPG",
-                copyStatus: .pending
+                copyStatus: .pending,
+                portableReceiptOverride: true
             )
         )
 
@@ -78,6 +81,9 @@ struct RepositoryTests {
         #expect(fetchedJob?.photosRoot == "/tmp/photos")
         #expect(files.count == 1)
         #expect(files.first?.decision == .new)
+        #expect(files.first?.knownSource == .portableLedger)
+        #expect(files.first?.modificationTimeEpochSeconds == 1_700_000_000)
+        #expect(files.first?.portableReceiptOverride == true)
         #expect(files.first?.copyStatus == .pending)
     }
 

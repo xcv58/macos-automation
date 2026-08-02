@@ -165,6 +165,7 @@ public struct JobFilePlanUpdate: Sendable {
     public let plannedDestinationPath: String?
     public let copyStatus: CopyStatus
     public let error: String?
+    public let portableReceiptOverride: Bool?
 
     public init(
         id: Int64,
@@ -172,7 +173,8 @@ public struct JobFilePlanUpdate: Sendable {
         destinationDirectory: String?,
         plannedDestinationPath: String?,
         copyStatus: CopyStatus,
-        error: String?
+        error: String?,
+        portableReceiptOverride: Bool? = nil
     ) {
         self.id = id
         self.decision = decision
@@ -180,5 +182,6 @@ public struct JobFilePlanUpdate: Sendable {
         self.plannedDestinationPath = plannedDestinationPath
         self.copyStatus = copyStatus
         self.error = error
+        self.portableReceiptOverride = portableReceiptOverride
     }
 }

@@ -64,12 +64,12 @@
                 <article class="step">
                     <span class="step-number">2</span>
                     <h3>Set folders</h3>
-                    <p>Open Settings, choose photo and video destinations, and optionally enable automatic source ejection after successful imports.</p>
+                    <p>Open Settings, choose photo and video destinations, and optionally enable automatic source ejection or portable import receipts. Portable receipts write a hidden <code>.sd-import</code> ledger on writable sources so other Macs can avoid duplicate imports.</p>
                 </article>
                 <article class="step">
                     <span class="step-number">3</span>
                     <h3>Import</h3>
-                    <p>Insert a card, review the preview, then keep the card connected until copy progress finishes. Eject it from the receipt when you are done.</p>
+                    <p>Insert a card, review the preview, then keep the card connected until copy progress finishes. Files recognized from portable history are labeled <code>Other Mac</code>; history is rechecked before copying, and <code>Import Anyway</code> remains active while the destination plan is rebuilt. Eject the source from the receipt when you are done.</p>
                 </article>
             </div>
         </section>
@@ -92,7 +92,8 @@
                 <h2>Safety notes</h2>
                 <ul>
                     <li>SD Import copies files; it does not erase the card.</li>
-                    <li>Files already imported are skipped on future runs.</li>
+                    <li>When portable receipts are enabled, SD Import writes only its hidden <code>.sd-import</code> ledger on the source. Locked and read-only sources continue with a warning.</li>
+                    <li>Files already imported are skipped on future runs. <code>Import Anyway</code> is available only for files recognized from portable history. If a source file changes after scanning, SD Import requires a rescan instead of applying stale history.</li>
                     <li>If a destination file already exists but is different, SD Import keeps both files by adding a suffix.</li>
                     <li>Leave the app in <code>Applications</code> so updates can install correctly.</li>
                 </ul>
