@@ -68,7 +68,10 @@ public struct MountHandoffEvent: Codable, Equatable, Identifiable, Sendable {
     }
 
     private static func normalizedPath(_ path: String) -> String {
-        URL(fileURLWithPath: path, isDirectory: true).standardizedFileURL.path
+        URL(fileURLWithPath: path, isDirectory: true)
+            .standardizedFileURL
+            .resolvingSymlinksInPath()
+            .path
     }
 }
 
@@ -275,7 +278,10 @@ public struct MountHandoffStore {
     }
 
     private func normalizedPath(_ path: String) -> String {
-        URL(fileURLWithPath: path, isDirectory: true).standardizedFileURL.path
+        URL(fileURLWithPath: path, isDirectory: true)
+            .standardizedFileURL
+            .resolvingSymlinksInPath()
+            .path
     }
 
     private func recordMatchesDescriptor(at url: URL, descriptor: Int32) -> Bool {

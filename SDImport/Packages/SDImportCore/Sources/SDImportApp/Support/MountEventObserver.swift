@@ -133,7 +133,11 @@ final class MountEventObserver {
         }
 
         do {
-            guard let claim = try handoffStore?.claimEvent(
+            guard let handoffStore else {
+                errorHandler("The background prompt mailbox is unavailable", nil)
+                return
+            }
+            guard let claim = try handoffStore.claimEvent(
                 id: eventID,
                 targetApplicationPath: targetApplicationPath
             ) else {

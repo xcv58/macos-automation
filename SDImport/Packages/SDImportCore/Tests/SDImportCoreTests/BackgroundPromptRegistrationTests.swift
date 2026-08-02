@@ -158,6 +158,21 @@ struct BackgroundPromptRegistrationTests {
         #expect(!ownership.isCurrentApplicationAuthoritative)
     }
 
+    @Test("installed-copy ownership matches Applications roots case-insensitively")
+    func installedCopyOwnershipMatchesRootCaseInsensitively() {
+        let ownership = BackgroundPromptApplicationOwnershipPolicy.ownership(
+            currentApplicationPath: "/case-insensitive-root/SD Import.app",
+            candidateApplicationPaths: ["/case-insensitive-root/SD Import.app"],
+            systemApplicationsPath: "/CASE-INSENSITIVE-ROOT",
+            userApplicationsPath: "/Users/tester/Applications"
+        )
+
+        #expect(
+            ownership.authoritativeApplicationPath == "/case-insensitive-root/SD Import.app"
+        )
+        #expect(ownership.isCurrentApplicationAuthoritative)
+    }
+
     @Test("an uninstalled copy cannot become authoritative without an installed candidate")
     func uninstalledCopyRequiresInstallation() {
         let ownership = BackgroundPromptApplicationOwnershipPolicy.ownership(

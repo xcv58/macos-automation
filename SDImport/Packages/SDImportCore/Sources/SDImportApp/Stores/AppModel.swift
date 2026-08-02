@@ -341,6 +341,7 @@ final class AppModel: ObservableObject {
             refreshAvailableSourceVolumes()
             validatePaths()
             refreshHistory()
+            LoginItemController.invalidateApplicationOwnershipCache()
             refreshBackgroundPromptHealth()
             do {
                 try authorizeCurrentBackgroundPromptHelperIfNeeded()
@@ -1410,6 +1411,7 @@ final class AppModel: ObservableObject {
 
     private func performAutoPromptPreferenceChange(_ enabled: Bool) async {
         invalidateBackgroundPromptHealthRefresh()
+        LoginItemController.invalidateApplicationOwnershipCache()
         backgroundPromptLastError = nil
         backgroundPromptLastErrorSequence = nil
         do {
@@ -1461,6 +1463,7 @@ final class AppModel: ObservableObject {
     }
 
     func applicationDidBecomeActive() {
+        LoginItemController.invalidateApplicationOwnershipCache()
         refreshAutoPromptPreferenceFromSharedStore()
         mountObserver?.consumePendingHandoffs()
         reconcileBackgroundPromptRegistration()
@@ -1650,6 +1653,7 @@ final class AppModel: ObservableObject {
             return
         }
         defaults.set(data, forKey: DefaultsKeys.lastLoginItemRepairIdentity)
+        LoginItemController.invalidateApplicationOwnershipCache()
     }
 
     private func reconcileBackgroundPromptRegistration(showFeedback: Bool = false) {
@@ -1735,6 +1739,7 @@ final class AppModel: ObservableObject {
 
     private func performBackgroundPromptRepair(requireDesiredEnabled: Bool = false) async {
         invalidateBackgroundPromptHealthRefresh()
+        LoginItemController.invalidateApplicationOwnershipCache()
         refreshBackgroundPromptHealth()
         guard backgroundPromptCanConfigure else {
             cancelBackgroundPromptRetry(resetAttempts: true)

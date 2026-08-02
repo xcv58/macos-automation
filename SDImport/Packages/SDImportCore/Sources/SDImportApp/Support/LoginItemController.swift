@@ -3,8 +3,11 @@ import Foundation
 import SDImportCore
 import ServiceManagement
 
+@MainActor
 enum LoginItemController {
     static let identifier = "com.xcv58.SDImport.Agent"
+
+    private static var cachedApplicationOwnership: BackgroundPromptApplicationOwnership?
 
     static var status: BackgroundPromptServiceStatus {
         switch service.status {
@@ -26,11 +29,20 @@ enum LoginItemController {
     }
 
     static var applicationOwnership: BackgroundPromptApplicationOwnership {
-        BackgroundPromptApplicationOwnershipPolicy.ownership(
+        if let cachedApplicationOwnership {
+            return cachedApplicationOwnership
+        }
+        let ownership = BackgroundPromptApplicationOwnershipPolicy.ownership(
             currentApplicationPath: Bundle.main.bundleURL.path,
             candidateApplicationPaths: discoveredApplicationURLs.map(\.path),
             userApplicationsPath: userApplicationsURL.path
         )
+        cachedApplicationOwnership = ownership
+        return ownership
+    }
+
+    static func invalidateApplicationOwnershipCache() {
+        cachedApplicationOwnership = nil
     }
 
     static func setEnabled(_ enabled: Bool) async throws {

@@ -291,7 +291,7 @@ public enum DiagnosticsReportBuilder {
     private static func redactedDiagnosticMessage(_ message: String, homeDirectory: URL) -> String {
         var redacted = message.replacingOccurrences(of: homeDirectory.path, with: "~")
         let patterns = [
-            #"/Volumes/[^`\n,;]+"#,
+            #"/Volumes/[^`\n,;]+?(?=\s+(?:and|or)\s+/(?:Applications|Users|Volumes)/|[,;`]|\n|$)"#,
             #"/Applications/[^`\n]+?\.app"#
         ]
         for pattern in patterns {

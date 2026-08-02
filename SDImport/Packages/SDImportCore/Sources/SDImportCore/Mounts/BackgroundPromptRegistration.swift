@@ -117,7 +117,7 @@ public enum BackgroundPromptApplicationOwnershipPolicy {
     }
 
     private static func isDescendant(_ path: String, of root: String) -> Bool {
-        path.hasPrefix(root + "/")
+        path.range(of: root + "/", options: [.anchored, .caseInsensitive]) != nil
     }
 
     private static func normalizedPath(_ path: String) -> String {

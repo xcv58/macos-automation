@@ -475,6 +475,37 @@ struct MountHandoffStoreTests {
         #expect(secondConsumer.isEmpty)
     }
 
+    @Test("symlinked and resolved application paths identify the same handoff target")
+    func symlinkedApplicationPathMatchesResolvedTarget() throws {
+        let root = try temporaryDirectory()
+        let applicationURL = root.appendingPathComponent("SD Import.app", isDirectory: true)
+        let symlinkURL = root.appendingPathComponent("Installed SD Import.app", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: applicationURL,
+            withIntermediateDirectories: true
+        )
+        try FileManager.default.createSymbolicLink(
+            at: symlinkURL,
+            withDestinationURL: applicationURL
+        )
+
+        let store = MountHandoffStore(
+            directoryURL: root.appendingPathComponent("Mount Handoffs", isDirectory: true)
+        )
+        try store.enqueue(
+            mountPath: "/Volumes/CARD",
+            volumeName: "CARD",
+            agentBuild: "44",
+            targetApplicationPath: symlinkURL.path
+        )
+
+        let claims = try store.claimPendingEvents(targetApplicationPath: applicationURL.path)
+        #expect(claims.count == 1)
+        if let claim = claims.first {
+            try store.acknowledge(claim)
+        }
+    }
+
     @Test("mismatched filenames and duplicate payloads cannot loop")
     func mismatchedFilenameIsDiscarded() throws {
         let directory = try temporaryDirectory()

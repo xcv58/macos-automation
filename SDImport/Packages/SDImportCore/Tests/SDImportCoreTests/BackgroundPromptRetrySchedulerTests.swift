@@ -77,33 +77,36 @@ struct BackgroundPromptRetrySchedulerTests {
     }
 
     @Test("scheduled retry runs only after its delay completes")
-    func scheduledRetryWaitsForDelay() async {
+    func scheduledRetryWaitsForDelay() async throws {
         let sleeper = ControlledRetrySleeper()
         let scheduler = BackgroundPromptRetryScheduler { duration in
             try await sleeper.sleep(duration)
         }
+        let operationCompleted = AsyncTestSignal()
         var operationCount = 0
 
         scheduler.schedule(after: 300) {
             operationCount += 1
+            operationCompleted.signal()
         }
-        while await !sleeper.hasPendingSleep {
-            await Task.yield()
+        try await waitWithinTimeout {
+            await sleeper.waitUntilPending()
         }
         #expect(operationCount == 0)
 
         await sleeper.resume()
-        for _ in 0..<10 where operationCount == 0 {
-            await Task.yield()
+        try await waitWithinTimeout {
+            await operationCompleted.wait()
         }
         #expect(operationCount == 1)
     }
 
     @Test("a replacement retry cancels the previous schedule")
-    func replacementCancelsPreviousRetry() async {
+    func replacementCancelsPreviousRetry() async throws {
         let scheduler = BackgroundPromptRetryScheduler { _ in
             try await Task.sleep(for: .seconds(60))
         }
+        let operationCompleted = AsyncTestSignal()
         var operationCount = 0
 
         scheduler.schedule(after: 60) {
@@ -111,9 +114,10 @@ struct BackgroundPromptRetrySchedulerTests {
         }
         scheduler.schedule(after: 0) {
             operationCount += 10
+            operationCompleted.signal()
         }
-        for _ in 0..<10 where operationCount == 0 {
-            await Task.yield()
+        try await waitWithinTimeout {
+            await operationCompleted.wait()
         }
 
         #expect(operationCount == 10)
@@ -122,18 +126,63 @@ struct BackgroundPromptRetrySchedulerTests {
 
 private actor ControlledRetrySleeper {
     private var continuation: CheckedContinuation<Void, any Error>?
-    private(set) var hasPendingSleep = false
+    private let sleepStarted = AsyncTestSignal()
 
     func sleep(_ duration: Duration) async throws {
-        hasPendingSleep = true
+        sleepStarted.signal()
         try await withCheckedThrowingContinuation { continuation in
             self.continuation = continuation
         }
     }
 
+    func waitUntilPending() async {
+        await sleepStarted.wait()
+    }
+
     func resume() {
         continuation?.resume()
         continuation = nil
-        hasPendingSleep = false
+    }
+}
+
+private final class AsyncTestSignal: @unchecked Sendable {
+    private let stream: AsyncStream<Void>
+    private let continuation: AsyncStream<Void>.Continuation
+
+    init() {
+        let pair = AsyncStream<Void>.makeStream()
+        stream = pair.stream
+        continuation = pair.continuation
+    }
+
+    func signal() {
+        continuation.yield()
+        continuation.finish()
+    }
+
+    func wait() async {
+        for await _ in stream {
+            return
+        }
+    }
+}
+
+private enum AsyncTestTimeout: Error {
+    case expired
+}
+
+private func waitWithinTimeout(
+    _ operation: @escaping @Sendable () async -> Void
+) async throws {
+    try await withThrowingTaskGroup(of: Void.self) { group in
+        group.addTask {
+            await operation()
+        }
+        group.addTask {
+            try await Task.sleep(for: .seconds(2))
+            throw AsyncTestTimeout.expired
+        }
+        _ = try await group.next()
+        group.cancelAll()
     }
 }

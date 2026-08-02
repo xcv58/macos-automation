@@ -94,7 +94,13 @@ struct DiagnosticsReportBuilderTests {
         #expect(report.contains("background helper status: `enabled`"))
         #expect(report.contains("background helper ownership: `current installed copy`"))
         #expect(report.contains("background helper build: `44`"))
-        #expect(report.contains("<redacted-path>"))
+        #expect(report.contains("background helper last launch: `2023-11-14T22:14:10Z`"))
+        #expect(report.contains("background helper last handoff: `2023-11-14T22:14:35Z`"))
+        #expect(
+            report.contains(
+                "background helper last error: `Could not read <redacted-path> and <redacted-path>`"
+            )
+        )
         #expect(!report.contains("PRIVATE_NAME"))
         #expect(!report.contains("/Users/tester"))
         #expect(!report.contains("/Volumes/CARD/DCIM"))
