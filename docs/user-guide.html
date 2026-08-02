@@ -92,7 +92,8 @@
                 <h2>Safety notes</h2>
                 <ul>
                     <li>SD Import copies files; it does not erase the card.</li>
-                    <li>Files already imported are skipped on future runs. If a source file changes after scanning, SD Import requires a rescan instead of applying stale history.</li>
+                    <li>When portable receipts are enabled, SD Import writes only its hidden <code>.sd-import</code> ledger on the source. Locked and read-only sources continue with a warning.</li>
+                    <li>Files already imported are skipped on future runs. <code>Import Anyway</code> is available only for files recognized from portable history. If a source file changes after scanning, SD Import requires a rescan instead of applying stale history.</li>
                     <li>If a destination file already exists but is different, SD Import keeps both files by adding a suffix.</li>
                     <li>Leave the app in <code>Applications</code> so updates can install correctly.</li>
                 </ul>

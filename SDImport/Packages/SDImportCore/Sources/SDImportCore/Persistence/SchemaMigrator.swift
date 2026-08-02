@@ -72,7 +72,7 @@ public enum SchemaMigrator {
                     .notNull()
                     .defaults(to: false)
             }
-            try db.execute(sql: "PRAGMA user_version = 4")
+            try db.execute(sql: "PRAGMA user_version = \(Self.currentUserVersion)")
         }
 
         return migrator

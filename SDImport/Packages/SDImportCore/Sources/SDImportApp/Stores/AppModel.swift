@@ -1147,17 +1147,31 @@ final class AppModel: ObservableObject {
         statusMessage = "Preparing files imported on another Mac..."
         importTask = Task.detached(priority: .userInitiated) {
             do {
+                try Task.checkCancellation()
                 let repositories = try Self.makeRepositories(databaseURL: databaseURL)
+                try Task.checkCancellation()
                 try repositories.jobRepository.updateJobFileImportPlan(jobID: jobID, updates: updates)
+                try Task.checkCancellation()
                 let files = try repositories.jobRepository.fetchJobFiles(jobID: jobID)
                 let jobs = try repositories.jobRepository.listImportHistoryJobs(limit: 100)
+                try Task.checkCancellation()
 
                 await MainActor.run {
+                    guard !Task.isCancelled else {
+                        self.isWorking = false
+                        self.importTask = nil
+                        return
+                    }
                     self.currentPreviewFiles = files
                     self.selectedJobFiles = files
                     self.jobs = jobs
                     self.rebuildPreviewPlanCache()
                     self.statusMessage = "Portable receipt overridden for \(updates.count) files"
+                    self.isWorking = false
+                    self.importTask = nil
+                }
+            } catch is CancellationError {
+                await MainActor.run {
                     self.isWorking = false
                     self.importTask = nil
                 }

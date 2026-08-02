@@ -19,6 +19,23 @@ public struct DedupeRepository {
         }
     }
 
+    func containsExactSource(
+        _ fingerprint: FileFingerprint,
+        sourcePath: String
+    ) throws -> Bool {
+        try pool.read { db in
+            let count = try Int.fetchOne(
+                db,
+                sql: """
+                SELECT COUNT(*) FROM items
+                WHERE hash = ? AND size = ? AND first_source_path = ?
+                """,
+                arguments: [fingerprint.value, fingerprint.size, sourcePath]
+            ) ?? 0
+            return count > 0
+        }
+    }
+
     public func recordImported(
         _ fingerprint: FileFingerprint,
         jobID: String,

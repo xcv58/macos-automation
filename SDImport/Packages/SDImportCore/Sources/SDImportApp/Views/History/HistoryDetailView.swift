@@ -331,16 +331,7 @@ private struct HistoryFileRow: View {
         case .copied:
             return "Copied"
         case .skipped:
-            switch file.knownSource {
-            case .portableLedger:
-                return "Other Mac"
-            case .localLedger:
-                return "Known"
-            case .destination:
-                return "Already Exists"
-            case nil:
-                return "Skipped"
-            }
+            return file.knownSource?.skippedStatusTitle ?? "Skipped"
         case .failed:
             return "Failed"
         }

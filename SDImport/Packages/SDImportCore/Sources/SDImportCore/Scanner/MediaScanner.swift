@@ -77,6 +77,7 @@ public struct MediaScanner {
         var conflictFiles = 0
         var portableKnownFiles = 0
         var portableFingerprints: Set<String> = []
+        var portableIdentitiesToBackfill: [PortableFileIdentity] = []
         var portableReceiptWarning: String?
         var portableWritesAvailable = request.portableReceiptsEnabled
         let portableLedger = PortableImportReceiptLedger(sourceRootURL: request.mountURL)
@@ -120,6 +121,19 @@ public struct MediaScanner {
             let portableFingerprint = PortableImportReceiptLedger.portableFingerprint(for: portableIdentity)
             let portablyImported = request.portableReceiptsEnabled
                 && portableFingerprints.contains(portableFingerprint)
+            let shouldBackfillPortableReceipt = request.portableReceiptsEnabled
+                && portableWritesAvailable
+                && locallyImported
+                && !portablyImported
+            let exactlyImportedFromThisSource: Bool
+            if shouldBackfillPortableReceipt {
+                exactlyImportedFromThisSource = try dedupeRepository.containsExactSource(
+                    fingerprint,
+                    sourcePath: fileURL.path
+                )
+            } else {
+                exactlyImportedFromThisSource = false
+            }
             let alreadyImported = locallyImported || portablyImported
             var knownSource: KnownFileSource?
             if locallyImported {
@@ -129,14 +143,9 @@ public struct MediaScanner {
                 portableKnownFiles += 1
             }
 
-            if locallyImported, portableWritesAvailable, !portablyImported {
-                do {
-                    try portableLedger.append(identity: portableIdentity)
-                    portableFingerprints.insert(portableFingerprint)
-                } catch {
-                    portableWritesAvailable = false
-                    portableReceiptWarning = "Portable import history could not be updated: \(error.localizedDescription)"
-                }
+            if exactlyImportedFromThisSource {
+                portableIdentitiesToBackfill.append(portableIdentity)
+                portableFingerprints.insert(portableFingerprint)
             }
 
             guard mediaKind != .unsupported else {
@@ -240,6 +249,21 @@ public struct MediaScanner {
 
         if shouldCancel() {
             throw SDImportError.cancelled
+        }
+
+        if portableWritesAvailable, !portableIdentitiesToBackfill.isEmpty {
+            do {
+                let appendResult = try portableLedger.appendReturningRevision(
+                    identities: portableIdentitiesToBackfill
+                )
+                if let warning = appendResult.warning, portableReceiptWarning != warning {
+                    portableReceiptWarning = [portableReceiptWarning, warning]
+                        .compactMap { $0 }
+                        .joined(separator: ". ")
+                }
+            } catch {
+                portableReceiptWarning = "Portable import history could not be updated: \(error.localizedDescription)"
+            }
         }
 
         let summary = ScanSummary(

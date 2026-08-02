@@ -100,7 +100,7 @@ https://github.com/xcv58/sd-import/releases/latest
 
 - SD Import copies files; it does not erase the card.
 - When portable receipts are enabled, SD Import writes only its hidden `.sd-import` ledger on the source. Locked and read-only sources continue with a warning.
-- Files already imported are skipped on future runs, including when portable history changes after the original scan. `Import Anyway` remains an explicit override.
+- Files already imported are skipped on future runs, including when portable history changes after the original scan. `Import Anyway` is available only for files recognized from portable history.
 - If a source file changes after scanning, SD Import stops that file and asks for a rescan instead of applying stale dedupe history.
 - If a destination file already exists but is different, SD Import keeps both files by adding a suffix.
 - Leave the app in `Applications` so updates can install correctly.

@@ -25,18 +25,61 @@ public struct PortableFileIdentity: Hashable, Sendable {
 public struct PortableImportReceiptSnapshot: Sendable {
     public let fingerprints: Set<String>
     public let invalidRecordCount: Int
+    let revision: PortableImportReceiptLedgerRevision?
+    let advisoryLockUnavailable: Bool
 
     public init(fingerprints: Set<String>, invalidRecordCount: Int) {
         self.fingerprints = fingerprints
         self.invalidRecordCount = invalidRecordCount
+        self.revision = nil
+        self.advisoryLockUnavailable = false
+    }
+
+    init(
+        fingerprints: Set<String>,
+        invalidRecordCount: Int,
+        revision: PortableImportReceiptLedgerRevision,
+        advisoryLockUnavailable: Bool = false
+    ) {
+        self.fingerprints = fingerprints
+        self.invalidRecordCount = invalidRecordCount
+        self.revision = revision
+        self.advisoryLockUnavailable = advisoryLockUnavailable
     }
 
     public var warning: String? {
-        guard invalidRecordCount > 0 else {
-            return nil
+        var warnings: [String] = []
+        if invalidRecordCount > 0 {
+            let noun = invalidRecordCount == 1 ? "record" : "records"
+            warnings.append("Ignored \(invalidRecordCount) invalid or corrupted portable import \(noun)")
         }
-        let noun = invalidRecordCount == 1 ? "record" : "records"
-        return "Ignored \(invalidRecordCount) invalid or corrupted portable import \(noun)"
+        if advisoryLockUnavailable {
+            warnings.append("Portable import history cannot coordinate with other apps because this source does not support file locking")
+        }
+        return warnings.isEmpty ? nil : warnings.joined(separator: ". ")
+    }
+}
+
+enum PortableImportReceiptLedgerRevision: Equatable, Sendable {
+    case missing
+    case file(
+        device: UInt64,
+        inode: UInt64,
+        size: Int64,
+        modificationSeconds: Int64,
+        modificationNanoseconds: Int64
+    )
+}
+
+struct PortableImportReceiptLedgerAppendResult: Sendable {
+    let previousRevision: PortableImportReceiptLedgerRevision
+    let revision: PortableImportReceiptLedgerRevision
+    let advisoryLockUnavailable: Bool
+
+    var warning: String? {
+        advisoryLockUnavailable
+            ? "Portable import history cannot coordinate with other apps because this source does not support file locking"
+            : nil
     }
 }
 
@@ -45,6 +88,7 @@ public enum PortableImportReceiptLedgerError: LocalizedError, Sendable {
     case sourceNotDirectory(String)
     case ledgerTooLarge(Int64)
     case recordTooLarge(Int)
+    case invalidReceipt
     case ledgerIsNotAFile(String)
     case unsafeLedgerPath(String)
 
@@ -58,6 +102,8 @@ public enum PortableImportReceiptLedgerError: LocalizedError, Sendable {
             return "The portable import ledger is too large (\(ByteCountFormatter.string(fromByteCount: size, countStyle: .file)))"
         case .recordTooLarge(let size):
             return "The portable import receipt is too large (\(ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file)))"
+        case .invalidReceipt:
+            return "The portable import receipt contains invalid or inconsistent file identity data"
         case .ledgerIsNotAFile(let path):
             return "The portable import ledger is not a regular file at \(path)"
         case .unsafeLedgerPath(let path):
@@ -66,22 +112,66 @@ public enum PortableImportReceiptLedgerError: LocalizedError, Sendable {
     }
 }
 
+typealias PortableFileLockOperation = @Sendable (
+    Int32,
+    Int32,
+    UnsafeMutablePointer<Darwin.flock>
+) -> Int32
+
+private final class PortableImportReceiptProcessLockRegistry: @unchecked Sendable {
+    static let shared = PortableImportReceiptProcessLockRegistry()
+
+    private let registryLock = NSLock()
+    private var locks: [String: NSLock] = [:]
+
+    func lock(for sourceRootPath: String) -> NSLock {
+        registryLock.lock()
+        defer { registryLock.unlock() }
+        if let existing = locks[sourceRootPath] {
+            return existing
+        }
+        let created = NSLock()
+        locks[sourceRootPath] = created
+        return created
+    }
+}
+
 public struct PortableImportReceiptLedger: Sendable {
     public static let directoryName = ".sd-import"
     public static let fileName = "imported-v1.jsonl"
 
     private static let schemaVersion = 1
-    private static let fingerprintAlgorithm = "sdimport-portable-v1"
+    private static let fingerprintAlgorithm = "sdimport-portable-v2"
     private static let maximumLedgerBytes: Int64 = 64 * 1_024 * 1_024
     private static let maximumRecordBytes = 16 * 1_024
     private static let maximumRelativePathLength = 4_096
     private static let readBufferSize = 64 * 1_024
-    private static let processLock = NSLock()
 
     public let sourceRootURL: URL
+    private let processLock: NSLock
+    private let fileLockOperation: PortableFileLockOperation
 
     public init(sourceRootURL: URL) {
-        self.sourceRootURL = sourceRootURL.standardizedFileURL
+        let standardizedSourceRootURL = sourceRootURL.standardizedFileURL
+        self.sourceRootURL = standardizedSourceRootURL
+        self.processLock = PortableImportReceiptProcessLockRegistry.shared.lock(
+            for: standardizedSourceRootURL.path
+        )
+        self.fileLockOperation = { descriptor, command, fileLock in
+            Darwin.fcntl(descriptor, command, fileLock)
+        }
+    }
+
+    init(
+        sourceRootURL: URL,
+        fileLockOperation: @escaping PortableFileLockOperation
+    ) {
+        let standardizedSourceRootURL = sourceRootURL.standardizedFileURL
+        self.sourceRootURL = standardizedSourceRootURL
+        self.processLock = PortableImportReceiptProcessLockRegistry.shared.lock(
+            for: standardizedSourceRootURL.path
+        )
+        self.fileLockOperation = fileLockOperation
     }
 
     public var ledgerURL: URL {
@@ -99,25 +189,49 @@ public struct PortableImportReceiptLedger: Sendable {
     }
 
     public func load() throws -> PortableImportReceiptSnapshot {
-        Self.processLock.lock()
-        defer { Self.processLock.unlock() }
+        guard let snapshot = try load(ifChangedSince: nil) else {
+            preconditionFailure("A forced portable receipt load must return a snapshot")
+        }
+        return snapshot
+    }
+
+    func load(
+        ifChangedSince previousRevision: PortableImportReceiptLedgerRevision?
+    ) throws -> PortableImportReceiptSnapshot? {
+        processLock.lock()
+        defer { processLock.unlock() }
 
         let sourceDescriptor = try openSourceDirectory()
         defer { Darwin.close(sourceDescriptor) }
 
         guard let ledgerDescriptor = try openLedgerForReading(sourceDescriptor: sourceDescriptor) else {
-            return PortableImportReceiptSnapshot(fingerprints: [], invalidRecordCount: 0)
+            let revision = PortableImportReceiptLedgerRevision.missing
+            guard revision != previousRevision else {
+                return nil
+            }
+            return PortableImportReceiptSnapshot(
+                fingerprints: [],
+                invalidRecordCount: 0,
+                revision: revision
+            )
         }
         defer { Darwin.close(ledgerDescriptor) }
 
-        try lock(ledgerDescriptor, type: F_RDLCK)
-        defer { unlock(ledgerDescriptor) }
-
-        let size = try regularFileSize(descriptor: ledgerDescriptor)
-        guard size <= Self.maximumLedgerBytes else {
-            throw PortableImportReceiptLedgerError.ledgerTooLarge(size)
+        let advisoryLockAcquired = try lock(ledgerDescriptor, type: F_RDLCK)
+        defer {
+            if advisoryLockAcquired {
+                unlock(ledgerDescriptor)
+            }
         }
-        let data = try readAll(descriptor: ledgerDescriptor, expectedSize: size)
+
+        let metadata = try regularFileMetadata(descriptor: ledgerDescriptor)
+        guard metadata.revision != previousRevision else {
+            return nil
+        }
+        guard metadata.size <= Self.maximumLedgerBytes else {
+            throw PortableImportReceiptLedgerError.ledgerTooLarge(metadata.size)
+        }
+        let data = try readAll(descriptor: ledgerDescriptor, expectedSize: metadata.size)
 
         let decoder = JSONDecoder()
         var fingerprints: Set<String> = []
@@ -141,7 +255,9 @@ public struct PortableImportReceiptLedger: Sendable {
 
         return PortableImportReceiptSnapshot(
             fingerprints: fingerprints,
-            invalidRecordCount: invalidRecordCount
+            invalidRecordCount: invalidRecordCount,
+            revision: metadata.revision,
+            advisoryLockUnavailable: !advisoryLockAcquired
         )
     }
 
@@ -149,44 +265,56 @@ public struct PortableImportReceiptLedger: Sendable {
         identity: PortableFileIdentity,
         importedAt: Date = Date()
     ) throws {
-        Self.processLock.lock()
-        defer { Self.processLock.unlock() }
+        _ = try appendReturningRevision(identity: identity, importedAt: importedAt)
+    }
 
-        let importedAtString = DateCoding.string(from: importedAt)
-        var receipt = Receipt(
-            schemaVersion: Self.schemaVersion,
-            fingerprintAlgorithm: Self.fingerprintAlgorithm,
-            fingerprint: Self.portableFingerprint(for: identity),
-            size: identity.size,
-            modificationTimeEpochSeconds: identity.modificationTimeEpochSeconds,
-            relativePath: identity.relativePath,
-            importedAt: importedAtString,
-            checksum: ""
-        )
-        receipt.checksum = try Self.checksum(for: receipt)
-        guard Self.isValid(receipt) else {
-            throw CocoaError(.fileWriteInvalidFileName)
+    public func append(
+        identities: [PortableFileIdentity],
+        importedAt: Date = Date()
+    ) throws {
+        guard !identities.isEmpty else {
+            return
+        }
+        _ = try appendReturningRevision(identities: identities, importedAt: importedAt)
+    }
+
+    func appendReturningRevision(
+        identity: PortableFileIdentity,
+        importedAt: Date = Date()
+    ) throws -> PortableImportReceiptLedgerAppendResult {
+        try appendReturningRevision(identities: [identity], importedAt: importedAt)
+    }
+
+    func appendReturningRevision(
+        identities: [PortableFileIdentity],
+        importedAt: Date = Date()
+    ) throws -> PortableImportReceiptLedgerAppendResult {
+        precondition(!identities.isEmpty, "A portable receipt append requires at least one identity")
+
+        let records = try identities.map { identity in
+            try Self.encodedRecord(identity: identity, importedAt: importedAt)
         }
 
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
-        var recordData = try encoder.encode(receipt)
-        recordData.append(0x0A)
-        guard recordData.count <= Self.maximumRecordBytes else {
-            throw PortableImportReceiptLedgerError.recordTooLarge(recordData.count)
-        }
+        processLock.lock()
+        defer { processLock.unlock() }
 
         let sourceDescriptor = try openSourceDirectory()
         defer { Darwin.close(sourceDescriptor) }
         let directoryDescriptor = try openOrCreateLedgerDirectory(sourceDescriptor: sourceDescriptor)
         defer { Darwin.close(directoryDescriptor) }
-        let ledgerDescriptor = try openLedgerForAppending(directoryDescriptor: directoryDescriptor)
+        let openedLedger = try openLedgerForAppending(directoryDescriptor: directoryDescriptor)
+        let ledgerDescriptor = openedLedger.descriptor
         defer { Darwin.close(ledgerDescriptor) }
 
-        try lock(ledgerDescriptor, type: F_WRLCK)
-        defer { unlock(ledgerDescriptor) }
+        let advisoryLockAcquired = try lock(ledgerDescriptor, type: F_WRLCK)
+        defer {
+            if advisoryLockAcquired {
+                unlock(ledgerDescriptor)
+            }
+        }
 
-        let currentSize = try regularFileSize(descriptor: ledgerDescriptor)
+        let previousMetadata = try regularFileMetadata(descriptor: ledgerDescriptor)
+        let currentSize = previousMetadata.size
         guard currentSize <= Self.maximumLedgerBytes else {
             throw PortableImportReceiptLedgerError.ledgerTooLarge(currentSize)
         }
@@ -195,7 +323,9 @@ public struct PortableImportReceiptLedger: Sendable {
         if currentSize > 0, try lastByte(descriptor: ledgerDescriptor, size: currentSize) != 0x0A {
             appendData.append(0x0A)
         }
-        appendData.append(recordData)
+        for record in records {
+            appendData.append(record)
+        }
 
         let finalSize = currentSize + Int64(appendData.count)
         guard finalSize <= Self.maximumLedgerBytes else {
@@ -205,6 +335,14 @@ public struct PortableImportReceiptLedger: Sendable {
         guard Darwin.fsync(ledgerDescriptor) == 0 else {
             throw Self.posixError(path: ledgerURL.path)
         }
+        if openedLedger.created, Darwin.fsync(directoryDescriptor) != 0 {
+            throw Self.posixError(path: ledgerURL.deletingLastPathComponent().path)
+        }
+        return PortableImportReceiptLedgerAppendResult(
+            previousRevision: previousMetadata.revision,
+            revision: try regularFileMetadata(descriptor: ledgerDescriptor).revision,
+            advisoryLockUnavailable: !advisoryLockAcquired
+        )
     }
 
     private func openSourceDirectory() throws -> Int32 {
@@ -293,12 +431,32 @@ public struct PortableImportReceiptLedger: Sendable {
         return descriptor
     }
 
-    private func openLedgerForAppending(directoryDescriptor: Int32) throws -> Int32 {
-        let descriptor = Darwin.openat(
+    private func openLedgerForAppending(directoryDescriptor: Int32) throws -> OpenedLedger {
+        var descriptor = Darwin.openat(
             directoryDescriptor,
             Self.fileName,
-            O_RDWR | O_APPEND | O_CREAT | O_NONBLOCK | O_CLOEXEC | O_NOFOLLOW,
+            O_RDWR | O_APPEND | O_CREAT | O_EXCL | O_NONBLOCK | O_CLOEXEC | O_NOFOLLOW,
             0o600
+        )
+        if descriptor >= 0 {
+            return OpenedLedger(descriptor: descriptor, created: true)
+        }
+
+        let creationError = errno
+        guard creationError == EEXIST else {
+            if creationError == ELOOP {
+                throw PortableImportReceiptLedgerError.unsafeLedgerPath(ledgerURL.path)
+            }
+            if creationError == EISDIR {
+                throw PortableImportReceiptLedgerError.ledgerIsNotAFile(ledgerURL.path)
+            }
+            throw Self.posixError(code: creationError, path: ledgerURL.path)
+        }
+
+        descriptor = Darwin.openat(
+            directoryDescriptor,
+            Self.fileName,
+            O_RDWR | O_APPEND | O_NONBLOCK | O_CLOEXEC | O_NOFOLLOW
         )
         guard descriptor >= 0 else {
             let code = errno
@@ -312,7 +470,7 @@ public struct PortableImportReceiptLedger: Sendable {
         }
         do {
             _ = try regularFileSize(descriptor: descriptor)
-            return descriptor
+            return OpenedLedger(descriptor: descriptor, created: false)
         } catch {
             Darwin.close(descriptor)
             throw error
@@ -320,6 +478,10 @@ public struct PortableImportReceiptLedger: Sendable {
     }
 
     private func regularFileSize(descriptor: Int32) throws -> Int64 {
+        try regularFileMetadata(descriptor: descriptor).size
+    }
+
+    private func regularFileMetadata(descriptor: Int32) throws -> RegularFileMetadata {
         var status = stat()
         guard Darwin.fstat(descriptor, &status) == 0 else {
             throw Self.posixError(path: ledgerURL.path)
@@ -327,25 +489,41 @@ public struct PortableImportReceiptLedger: Sendable {
         guard status.st_mode & S_IFMT == S_IFREG else {
             throw PortableImportReceiptLedgerError.ledgerIsNotAFile(ledgerURL.path)
         }
-        return Int64(status.st_size)
+        let size = Int64(status.st_size)
+        return RegularFileMetadata(
+            size: size,
+            revision: .file(
+                device: UInt64(status.st_dev),
+                inode: UInt64(status.st_ino),
+                size: size,
+                modificationSeconds: Int64(status.st_mtimespec.tv_sec),
+                modificationNanoseconds: Int64(status.st_mtimespec.tv_nsec)
+            )
+        )
     }
 
-    private func lock(_ descriptor: Int32, type: Int32) throws {
+    private func lock(_ descriptor: Int32, type: Int32) throws -> Bool {
         var fileLock = Darwin.flock()
         fileLock.l_type = Int16(type)
         fileLock.l_whence = Int16(SEEK_SET)
-        while Darwin.fcntl(descriptor, F_SETLKW, &fileLock) != 0 {
-            guard errno == EINTR else {
-                throw Self.posixError(path: ledgerURL.path)
+        while fileLockOperation(descriptor, F_SETLKW, &fileLock) != 0 {
+            let code = errno
+            if code == EINTR {
+                continue
             }
+            if code == ENOTSUP || code == EOPNOTSUPP || code == EINVAL {
+                return false
+            }
+            throw Self.posixError(code: code, path: ledgerURL.path)
         }
+        return true
     }
 
     private func unlock(_ descriptor: Int32) {
         var fileLock = Darwin.flock()
         fileLock.l_type = Int16(F_UNLCK)
         fileLock.l_whence = Int16(SEEK_SET)
-        _ = Darwin.fcntl(descriptor, F_SETLK, &fileLock)
+        _ = fileLockOperation(descriptor, F_SETLK, &fileLock)
     }
 
     private func readAll(descriptor: Int32, expectedSize: Int64) throws -> Data {
@@ -464,9 +642,39 @@ public struct PortableImportReceiptLedger: Sendable {
         modificationTimeEpochSeconds: Int64,
         relativePath: String
     ) -> String {
-        let payload = "p1|\(relativePath)|\(size)|\(modificationTimeEpochSeconds)"
+        let canonicalPath = relativePath.precomposedStringWithCanonicalMapping
+        let payload = "p2|\(canonicalPath)|\(size)|\(modificationTimeEpochSeconds)"
         let digest = SHA256.hash(data: Data(payload.utf8))
-        return "p1:" + digest.map { String(format: "%02x", $0) }.joined()
+        return "p2:" + digest.map { String(format: "%02x", $0) }.joined()
+    }
+
+    private static func encodedRecord(
+        identity: PortableFileIdentity,
+        importedAt: Date
+    ) throws -> Data {
+        var receipt = Receipt(
+            schemaVersion: schemaVersion,
+            fingerprintAlgorithm: fingerprintAlgorithm,
+            fingerprint: portableFingerprint(for: identity),
+            size: identity.size,
+            modificationTimeEpochSeconds: identity.modificationTimeEpochSeconds,
+            relativePath: identity.relativePath,
+            importedAt: DateCoding.string(from: importedAt),
+            checksum: ""
+        )
+        receipt.checksum = try checksum(for: receipt)
+        guard isValid(receipt) else {
+            throw PortableImportReceiptLedgerError.invalidReceipt
+        }
+
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        var recordData = try encoder.encode(receipt)
+        recordData.append(0x0A)
+        guard recordData.count <= maximumRecordBytes else {
+            throw PortableImportReceiptLedgerError.recordTooLarge(recordData.count)
+        }
+        return recordData
     }
 
     private static func checksum(for receipt: Receipt) throws -> String {
@@ -505,4 +713,14 @@ private struct ReceiptPayload: Encodable {
     let modificationTimeEpochSeconds: Int64
     let relativePath: String
     let importedAt: String
+}
+
+private struct RegularFileMetadata {
+    let size: Int64
+    let revision: PortableImportReceiptLedgerRevision
+}
+
+private struct OpenedLedger {
+    let descriptor: Int32
+    let created: Bool
 }

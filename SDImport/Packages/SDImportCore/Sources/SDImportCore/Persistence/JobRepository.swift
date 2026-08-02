@@ -181,6 +181,22 @@ public struct JobRepository {
                         SELECT COUNT(*) FROM job_files
                         WHERE job_id = ? AND copy_status = ?
                     ),
+                    new_files = (
+                        SELECT COUNT(*) FROM job_files
+                        WHERE job_id = ? AND decision = ?
+                    ),
+                    known_files = (
+                        SELECT COUNT(*) FROM job_files
+                        WHERE job_id = ? AND decision = ?
+                    ),
+                    unsupported_files = (
+                        SELECT COUNT(*) FROM job_files
+                        WHERE job_id = ? AND decision = ?
+                    ),
+                    conflict_files = (
+                        SELECT COUNT(*) FROM job_files
+                        WHERE job_id = ? AND decision = ?
+                    ),
                     status = ?,
                     completed_at = ?
                 WHERE job_id = ?
@@ -192,6 +208,14 @@ public struct JobRepository {
                     CopyStatus.skipped.databaseValue,
                     jobID,
                     CopyStatus.failed.databaseValue,
+                    jobID,
+                    FileDecision.new.databaseValue,
+                    jobID,
+                    FileDecision.known.databaseValue,
+                    jobID,
+                    FileDecision.unsupported.databaseValue,
+                    jobID,
+                    FileDecision.conflict.databaseValue,
                     finalStatus.databaseValue,
                     DateCoding.optionalString(from: completedAt),
                     jobID
@@ -229,6 +253,7 @@ public struct JobRepository {
         status: CopyStatus,
         finalDestinationPath: String? = nil,
         error: String? = nil,
+        decision: FileDecision? = nil,
         knownSource: KnownFileSource? = nil,
         completedAt: Date? = Date()
     ) throws {
@@ -239,6 +264,7 @@ public struct JobRepository {
                 SET copy_status = ?,
                     final_dest_path = COALESCE(?, final_dest_path),
                     error = ?,
+                    decision = COALESCE(?, decision),
                     known_source = COALESCE(?, known_source),
                     completed_at = ?
                 WHERE id = ?
@@ -247,6 +273,7 @@ public struct JobRepository {
                     status.databaseValue,
                     finalDestinationPath,
                     error,
+                    decision?.databaseValue,
                     knownSource?.rawValue,
                     DateCoding.optionalString(from: completedAt),
                     id

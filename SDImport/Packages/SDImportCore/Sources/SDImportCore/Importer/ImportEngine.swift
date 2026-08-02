@@ -62,6 +62,7 @@ public struct ImportEngine {
             sourceRootURL: URL(fileURLWithPath: job.mountPath, isDirectory: true)
         )
         var portableFingerprints: Set<String> = []
+        var portableLedgerRevision: PortableImportReceiptLedgerRevision?
         var portableReceiptWarning: String?
         var portableWritesAvailable = portableReceiptsEnabled
 
@@ -70,8 +71,13 @@ public struct ImportEngine {
                 return
             }
             do {
-                let snapshot = try portableLedger.load()
+                guard let snapshot = try portableLedger.load(
+                    ifChangedSince: portableLedgerRevision
+                ) else {
+                    return
+                }
                 portableFingerprints = snapshot.fingerprints
+                portableLedgerRevision = snapshot.revision
                 if let warning = snapshot.warning {
                     portableReceiptWarning = warning
                 }
@@ -112,8 +118,23 @@ public struct ImportEngine {
                 return
             }
             do {
-                try portableLedger.append(identity: identity)
-                portableFingerprints.insert(portableFingerprint)
+                let appendResult = try portableLedger.appendReturningRevision(
+                    identity: identity
+                )
+                if let warning = appendResult.warning {
+                    portableReceiptWarning = warning
+                }
+                if appendResult.previousRevision == portableLedgerRevision {
+                    portableLedgerRevision = appendResult.revision
+                    portableFingerprints.insert(portableFingerprint)
+                } else {
+                    let snapshot = try portableLedger.load()
+                    portableFingerprints = snapshot.fingerprints
+                    portableLedgerRevision = snapshot.revision
+                    if let warning = snapshot.warning {
+                        portableReceiptWarning = warning
+                    }
+                }
             } catch {
                 portableWritesAvailable = false
                 portableReceiptWarning = "Portable import history could not be updated: \(error.localizedDescription)"
@@ -123,8 +144,14 @@ public struct ImportEngine {
         refreshPortableFingerprints()
 
         let filesNeedingDestinationSpace = try files.filter { file in
-            guard let portableIdentity = validatedPortableIdentity(for: file) else {
-                return false
+            let portableIdentity: PortableFileIdentity?
+            if portableReceiptsEnabled {
+                guard let validatedIdentity = validatedPortableIdentity(for: file) else {
+                    return false
+                }
+                portableIdentity = validatedIdentity
+            } else {
+                portableIdentity = nil
             }
             let fingerprint = fingerprint(for: file, currentIdentity: portableIdentity)
             if try dedupeRepository.contains(fingerprint)
@@ -272,22 +299,28 @@ public struct ImportEngine {
                 continue
             }
 
-            guard let portableIdentity = validatedPortableIdentity(for: file) else {
-                failedFiles += 1
-                doneFiles += 1
-                processedBytes += file.size
-                let detail = "source changed since scan; rescan required"
-                try jobRepository.updateFileCopyStatus(
-                    id: fileID,
-                    status: .failed,
-                    error: detail
-                )
-                currentFile = nil
-                currentDestinationPath = nil
-                activeFileBytes = 0
-                recordFileEvent(file: file, status: .failed, detail: detail, destinationPath: nil)
-                emit(status: "copying")
-                continue
+            let portableIdentity: PortableFileIdentity?
+            if portableReceiptsEnabled {
+                guard let validatedIdentity = validatedPortableIdentity(for: file) else {
+                    failedFiles += 1
+                    doneFiles += 1
+                    processedBytes += file.size
+                    let detail = "source changed since scan; rescan required"
+                    try jobRepository.updateFileCopyStatus(
+                        id: fileID,
+                        status: .failed,
+                        error: detail
+                    )
+                    currentFile = nil
+                    currentDestinationPath = nil
+                    activeFileBytes = 0
+                    recordFileEvent(file: file, status: .failed, detail: detail, destinationPath: nil)
+                    emit(status: "copying")
+                    continue
+                }
+                portableIdentity = validatedIdentity
+            } else {
+                portableIdentity = nil
             }
             let fingerprint = fingerprint(for: file, currentIdentity: portableIdentity)
             refreshPortableFingerprints()
@@ -300,6 +333,7 @@ public struct ImportEngine {
                     id: fileID,
                     status: .skipped,
                     error: "already_imported_fingerprint",
+                    decision: .known,
                     knownSource: .localLedger
                 )
                 currentFile = nil
@@ -323,6 +357,7 @@ public struct ImportEngine {
                     id: fileID,
                     status: .skipped,
                     error: "already_imported_portable_receipt",
+                    decision: .known,
                     knownSource: .portableLedger
                 )
                 currentFile = nil
@@ -356,6 +391,7 @@ public struct ImportEngine {
                     id: fileID,
                     status: .skipped,
                     error: reason,
+                    decision: .known,
                     knownSource: .destination
                 )
                 try dedupeRepository.recordImported(
@@ -482,9 +518,9 @@ public struct ImportEngine {
 
     private func fingerprint(
         for file: JobFileRecord,
-        currentIdentity: PortableFileIdentity
+        currentIdentity: PortableFileIdentity?
     ) -> FileFingerprint {
-        if file.modificationTimeEpochSeconds == nil {
+        if file.modificationTimeEpochSeconds == nil, let currentIdentity {
             return FileFingerprint.compute(
                 size: currentIdentity.size,
                 modificationDate: Date(timeIntervalSince1970: TimeInterval(
