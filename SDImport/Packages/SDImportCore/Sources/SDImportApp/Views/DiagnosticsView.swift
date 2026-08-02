@@ -6,6 +6,7 @@ struct DiagnosticsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
+                backgroundPromptSection
                 diagnosticsExportSection
                 crashReportsSection
 
@@ -25,6 +26,72 @@ struct DiagnosticsView: View {
             .frame(maxWidth: .infinity, alignment: .top)
         }
         .background(AppSurfacePalette.contentBackground)
+    }
+
+    private var backgroundPromptSection: some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 10) {
+                AppStatusLabel(
+                    title: model.backgroundPromptStatusTitle,
+                    systemImage: backgroundPromptStatusImage,
+                    role: backgroundPromptStatusRole
+                )
+                .font(.callout)
+
+                Text(model.backgroundPromptStatusDetail)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if let state = model.backgroundPromptAgentState {
+                    Text("Helper build \(state.agentBuild) · last started \(state.launchedAt.formatted(date: .abbreviated, time: .standard))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+
+                HStack {
+                    if !model.backgroundPromptCanConfigure {
+                        Button(model.backgroundPromptApplicationOwnership.authoritativeApplicationPath == nil ? "Open Applications" : "Open Installed Copy") {
+                            model.openBackgroundPromptOwner()
+                        }
+                    } else if model.backgroundPromptServiceStatus == .requiresApproval {
+                        Button("Open Login Items") {
+                            model.openBackgroundPromptSystemSettings()
+                        }
+                    } else if model.backgroundPromptCanRepair {
+                        Button("Repair Background Helper") {
+                            model.repairBackgroundPrompt()
+                        }
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } label: {
+            Label("Background Prompt", systemImage: "externaldrive.badge.timemachine")
+        }
+    }
+
+    private var backgroundPromptStatusImage: String {
+        if !model.backgroundPromptCanConfigure {
+            return "exclamationmark.triangle"
+        }
+        if !model.autoPromptEnabled {
+            return "minus.circle"
+        }
+        return model.backgroundPromptNeedsAttention
+            ? "exclamationmark.triangle"
+            : "checkmark.circle"
+    }
+
+    private var backgroundPromptStatusRole: AppStatusLabel.Role {
+        if !model.backgroundPromptCanConfigure {
+            return .warning
+        }
+        if !model.autoPromptEnabled {
+            return .neutral
+        }
+        return model.backgroundPromptNeedsAttention ? .warning : .success
     }
 
     private var diagnosticsExportSection: some View {

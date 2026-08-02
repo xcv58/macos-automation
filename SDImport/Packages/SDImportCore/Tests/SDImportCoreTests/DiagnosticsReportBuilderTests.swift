@@ -39,6 +39,12 @@ struct DiagnosticsReportBuilderTests {
             photosStatus: "Ready",
             videosStatus: "Ready",
             autoPromptEnabled: true,
+            backgroundPromptServiceStatus: "enabled",
+            backgroundPromptApplicationOwnership: "current installed copy",
+            backgroundPromptAgentBuild: "44",
+            backgroundPromptAgentLaunchedAt: Date(timeIntervalSince1970: 1_700_000_050),
+            backgroundPromptLastHandoffAt: Date(timeIntervalSince1970: 1_700_000_075),
+            backgroundPromptLastError: "Could not read /Volumes/CARD/private and /Applications/SD Import.app",
             historyRetention: "90 days",
             statusMessage: "Import failed",
             setupError: nil,
@@ -85,6 +91,10 @@ struct DiagnosticsReportBuilderTests {
         #expect(report.contains("## Crash Reports"))
         #expect(report.contains("~/Library/Logs/DiagnosticReports"))
         #expect(report.contains("IPS"))
+        #expect(report.contains("background helper status: `enabled`"))
+        #expect(report.contains("background helper ownership: `current installed copy`"))
+        #expect(report.contains("background helper build: `44`"))
+        #expect(report.contains("<redacted-path>"))
         #expect(!report.contains("PRIVATE_NAME"))
         #expect(!report.contains("/Users/tester"))
         #expect(!report.contains("/Volumes/CARD/DCIM"))

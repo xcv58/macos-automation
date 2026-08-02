@@ -8,10 +8,33 @@ final class MountEventObserver {
     private var debouncer = MountDebouncer()
     private var token: NSObjectProtocol?
     private var distributedToken: NSObjectProtocol?
-    private let handler: (MountedVolume) -> Void
+    private let handler: (MountedVolume) -> MountEventHandlingDisposition
+    private let errorHandler: (String, UInt64?) -> Void
+    private let handoffAcknowledgedHandler: (MountHandoffEvent) -> Void
+    private let shouldHandleDirectMount: () -> Bool
+    private let shouldHandleHandoff: (MountHandoffEvent) -> Bool
+    private let handoffStore: MountHandoffStore?
+    private let targetApplicationPath: String
+    private let applicationBuild: String
+    private var deliveryController = MountHandoffDeliveryController()
 
-    init(handler: @escaping (MountedVolume) -> Void) {
+    init(
+        applicationURL: URL = Bundle.main.bundleURL,
+        handler: @escaping (MountedVolume) -> MountEventHandlingDisposition,
+        shouldHandleDirectMount: @escaping () -> Bool,
+        shouldHandleHandoff: @escaping (MountHandoffEvent) -> Bool,
+        handoffAcknowledgedHandler: @escaping (MountHandoffEvent) -> Void = { _ in },
+        errorHandler: @escaping (String, UInt64?) -> Void = { _, _ in }
+    ) {
         self.handler = handler
+        self.shouldHandleDirectMount = shouldHandleDirectMount
+        self.shouldHandleHandoff = shouldHandleHandoff
+        self.handoffAcknowledgedHandler = handoffAcknowledgedHandler
+        self.errorHandler = errorHandler
+        targetApplicationPath = applicationURL.standardizedFileURL.path
+        applicationBuild = Bundle(url: applicationURL)?
+            .object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "dev"
+        handoffStore = try? MountHandoffStore.defaultStore()
     }
 
     func start() {
@@ -34,17 +57,27 @@ final class MountEventObserver {
 
         distributedToken = DistributedNotificationCenter.default().addObserver(
             forName: Notification.Name(MountHandoff.notificationName),
-            object: nil,
+            object: targetApplicationPath,
             queue: .main
         ) { [weak self] notification in
             guard let path = notification.userInfo?[MountHandoff.pathKey] as? String else {
                 return
             }
+            guard
+                let targetPath = notification.userInfo?[MountHandoff.targetApplicationPathKey] as? String,
+                URL(fileURLWithPath: targetPath).standardizedFileURL.path == self?.targetApplicationPath
+            else {
+                return
+            }
             let name = notification.userInfo?[MountHandoff.nameKey] as? String
+            let eventID = (notification.userInfo?[MountHandoff.eventIDKey] as? String)
+                .flatMap(UUID.init(uuidString:))
             Task { @MainActor in
-                self?.handleHandoff(path: path, name: name)
+                self?.handleNotification(path: path, name: name, eventID: eventID)
             }
         }
+
+        consumePendingHandoffs()
     }
 
     func stop() {
@@ -59,16 +92,105 @@ final class MountEventObserver {
     }
 
     private func handleMountURL(_ mountURL: URL) {
+        guard shouldHandleDirectMount() else {
+            return
+        }
         let volume = detector.mountedVolume(from: mountURL)
         guard detector.isLikelyImportVolume(volume) else {
             return
         }
-        probeForMediaThenHandle(volume)
+        guard let handoffStore else {
+            errorHandler("The background prompt mailbox is unavailable", nil)
+            return
+        }
+        do {
+            let event = try handoffStore.enqueue(
+                mountPath: volume.mountURL.path,
+                volumeName: volume.name,
+                agentBuild: applicationBuild,
+                targetApplicationPath: targetApplicationPath,
+                origin: .foregroundApplication,
+                mountedVolume: volume
+            )
+            if let claim = try handoffStore.claimEvent(
+                id: event.id,
+                targetApplicationPath: targetApplicationPath
+            ) {
+                process(claim)
+            }
+        } catch {
+            errorHandler("Could not persist a foreground mounted-card event", nil)
+        }
     }
 
-    private func handleHandoff(path: String, name: String?) {
+    private func handleNotification(path: String, name: String?, eventID: UUID?) {
+        guard let eventID else {
+            guard shouldHandleDirectMount() else {
+                return
+            }
+            handleHandoff(path: path, name: name)
+            return
+        }
+
+        do {
+            guard let claim = try handoffStore?.claimEvent(
+                id: eventID,
+                targetApplicationPath: targetApplicationPath
+            ) else {
+                return
+            }
+            process(claim)
+        } catch {
+            errorHandler("Could not claim a background prompt event", nil)
+        }
+    }
+
+    func consumePendingHandoffs() {
+        guard let handoffStore else {
+            errorHandler("The background prompt mailbox is unavailable", nil)
+            return
+        }
+
+        do {
+            for claim in try handoffStore.claimPendingEvents(
+                targetApplicationPath: targetApplicationPath
+            ) {
+                process(claim)
+            }
+        } catch {
+            errorHandler("Could not read pending background prompt events", nil)
+        }
+    }
+
+    private func process(_ claim: MountHandoffClaim) {
+        guard shouldHandleHandoff(claim.event) else {
+            handoffStore?.release(claim)
+            return
+        }
+        handleHandoff(
+            path: claim.event.mountPath,
+            name: claim.event.volumeName,
+            claim: claim,
+            event: claim.event
+        )
+    }
+
+    private func handleHandoff(
+        path: String,
+        name: String?,
+        claim: MountHandoffClaim? = nil,
+        event: MountHandoffEvent? = nil
+    ) {
         let mountURL = URL(fileURLWithPath: path, isDirectory: true)
-        var volume = detector.mountedVolume(from: mountURL)
+        let detectedVolume = detector.mountedVolume(from: mountURL)
+        if !MountHandoffVolumeIdentity.matchesCurrentVolume(
+            expectedUUID: event?.mountedVolume?.volumeUUID,
+            currentUUID: detectedVolume.volumeUUID
+        ) {
+            finish(claim)
+            return
+        }
+        var volume = event?.mountedVolume ?? detectedVolume
         if let name, !name.isEmpty {
             volume = MountedVolume(
                 id: volume.id,
@@ -87,27 +209,80 @@ final class MountEventObserver {
             )
         }
         guard detector.isLikelyImportVolume(volume) else {
+            finish(claim)
             return
         }
-        probeForMediaThenHandle(volume)
+        probeForMediaThenHandle(volume, claim: claim, event: event)
     }
 
-    private func probeForMediaThenHandle(_ volume: MountedVolume) {
+    private func probeForMediaThenHandle(
+        _ volume: MountedVolume,
+        claim: MountHandoffClaim? = nil,
+        event: MountHandoffEvent? = nil
+    ) {
         let mountURL = volume.mountURL
         Task.detached(priority: .utility) { [weak self] in
-            guard VolumeDetector().containsImportableMedia(at: mountURL) else {
-                return
-            }
+            let containsMedia = VolumeDetector().containsImportableMedia(at: mountURL)
             await MainActor.run {
-                self?.handleImportableVolume(volume)
+                guard let self else {
+                    return
+                }
+                guard containsMedia else {
+                    self.finish(claim)
+                    return
+                }
+                guard let currentVolume = MountHandoffProbeCompletionValidator
+                    .currentVolumeForDelivery(
+                        event: event,
+                        detectCurrentVolume: {
+                            self.detector.mountedVolume(from: mountURL)
+                        }
+                    ),
+                    self.detector.isLikelyImportVolume(currentVolume)
+                else {
+                    self.finish(claim)
+                    return
+                }
+
+                switch self.handleImportableVolume(currentVolume, event: event) {
+                case .accepted:
+                    self.finish(claim)
+                case .deferred:
+                    if let claim {
+                        self.handoffStore?.release(claim)
+                    }
+                }
             }
         }
     }
 
-    private func handleImportableVolume(_ volume: MountedVolume) {
-        guard debouncer.shouldAccept(volume) else {
+    private func finish(_ claim: MountHandoffClaim?) {
+        guard let claim else {
             return
         }
-        handler(volume)
+        do {
+            try handoffStore?.acknowledge(claim)
+            handoffAcknowledgedHandler(claim.event)
+        } catch {
+            errorHandler("Could not acknowledge a background prompt event", claim.event.agentSequence)
+        }
+    }
+
+    private func handleImportableVolume(
+        _ volume: MountedVolume,
+        event: MountHandoffEvent?
+    ) -> MountEventHandlingDisposition {
+        if let event {
+            return deliveryController.evaluate(event: event, volume: volume, handler: handler)
+        } else {
+            guard !debouncer.hasRecentlyAccepted(volume) else {
+                return .accepted
+            }
+        }
+        let disposition = handler(volume)
+        if disposition == .accepted {
+            debouncer.recordAccepted(volume)
+        }
+        return disposition
     }
 }

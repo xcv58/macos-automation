@@ -249,14 +249,46 @@ the app and DMG must still use Developer ID signing and notarization.
 
 ## Old-To-New Update Test
 
+This is a required release gate for any build that changes the app bundle,
+background helper, updater, or mount-prompt behavior.
+
+An explicit release-owner waiver may accept this gate when the reported
+hardware failure cannot be reproduced and suitable hardware is unavailable.
+Record the affected version/build, date, automated replacement evidence, and
+post-release validation owner in `docs/manual-qa-matrix.md`. A waiver applies
+only to that candidate; it does not remove this gate from later releases or
+permit claiming physical old-to-new validation.
+
 Before calling updates ready for users:
 
 1. Release `v1.0` with `APP_VERSION=1.0` and `APP_BUILD=1`.
 2. Install `SD Import.app` from the `v1.0` DMG into `/Applications`.
 3. Release a newer build, for example `APP_VERSION=1.0.1` and `APP_BUILD=2`.
-4. Launch the installed `v1.0` app.
-5. Use `Check for Updates...`.
-6. Confirm Sparkle downloads, verifies, installs, and relaunches into the newer
+4. Launch the installed `v1.0` app, finish onboarding, and enable `Prompt when
+   a card is mounted`.
+5. Confirm Settings reports `Background helper: Running`, then quit the app.
+6. Launch the app and use `Check for Updates...`.
+7. Confirm Sparkle downloads, verifies, installs, and relaunches into the newer
    build.
-7. Confirm the bundled `SDImportAgent.app` was replaced and still works after
-   logout/login or reboot.
+8. Confirm the bundled `SDImportAgent.app` build matches the updated main-app
+   build and Settings still reports `Background helper: Running` without
+   toggling the setting.
+9. Quit the app, mount a real importable card once, and confirm exactly one
+   visible prompt appears without manually opening SD Import.
+10. Repeat the mount-prompt check while SD Import is hidden or minimized, then
+    close the last main window without quitting and repeat it again. Confirm the
+    existing window is reused when available and a new main window is created
+    when needed, with no second manual launch.
+11. Keep an older copy and a same-build copy running outside `/Applications`.
+    Confirm both report `Managed by installed copy`, cannot enable or repair the
+    helper, and only `/Applications/SD Import.app` activates and prompts. Also
+    confirm an uninstalled-only copy reports `Install required`.
+12. With the saved preference still enabled, unregister the helper and relaunch
+    SD Import. Confirm it self-repairs once for the current build without a
+    preference toggle.
+13. Force a newer helper delivery failure while an older handoff is pending.
+    Confirm acknowledging the older handoff does not clear the newer error and a
+    later successful handoff does clear it.
+14. Export diagnostics and confirm the helper status, redacted ownership state,
+    helper build, last launch, and last handoff are present without an unredacted
+    source or application path.

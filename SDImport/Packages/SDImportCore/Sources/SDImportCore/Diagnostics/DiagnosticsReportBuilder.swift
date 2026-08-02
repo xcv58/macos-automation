@@ -14,6 +14,12 @@ public struct DiagnosticsReportSnapshot: Sendable {
     public let photosStatus: String
     public let videosStatus: String
     public let autoPromptEnabled: Bool
+    public let backgroundPromptServiceStatus: String
+    public let backgroundPromptApplicationOwnership: String
+    public let backgroundPromptAgentBuild: String?
+    public let backgroundPromptAgentLaunchedAt: Date?
+    public let backgroundPromptLastHandoffAt: Date?
+    public let backgroundPromptLastError: String?
     public let historyRetention: String
     public let statusMessage: String
     public let setupError: String?
@@ -36,6 +42,12 @@ public struct DiagnosticsReportSnapshot: Sendable {
         photosStatus: String,
         videosStatus: String,
         autoPromptEnabled: Bool,
+        backgroundPromptServiceStatus: String,
+        backgroundPromptApplicationOwnership: String,
+        backgroundPromptAgentBuild: String?,
+        backgroundPromptAgentLaunchedAt: Date?,
+        backgroundPromptLastHandoffAt: Date?,
+        backgroundPromptLastError: String?,
         historyRetention: String,
         statusMessage: String,
         setupError: String?,
@@ -57,6 +69,12 @@ public struct DiagnosticsReportSnapshot: Sendable {
         self.photosStatus = photosStatus
         self.videosStatus = videosStatus
         self.autoPromptEnabled = autoPromptEnabled
+        self.backgroundPromptServiceStatus = backgroundPromptServiceStatus
+        self.backgroundPromptApplicationOwnership = backgroundPromptApplicationOwnership
+        self.backgroundPromptAgentBuild = backgroundPromptAgentBuild
+        self.backgroundPromptAgentLaunchedAt = backgroundPromptAgentLaunchedAt
+        self.backgroundPromptLastHandoffAt = backgroundPromptLastHandoffAt
+        self.backgroundPromptLastError = backgroundPromptLastError
         self.historyRetention = historyRetention
         self.statusMessage = statusMessage
         self.setupError = setupError
@@ -147,9 +165,18 @@ public enum DiagnosticsReportBuilder {
             "- architecture: `\(snapshot.architecture)`",
             "- update feed configured: `\(snapshot.updateFeedConfigured ? "yes" : "no")`",
             "- prompt on card mount: `\(snapshot.autoPromptEnabled ? "enabled" : "disabled")`",
+            "- background helper status: `\(snapshot.backgroundPromptServiceStatus)`",
+            "- background helper ownership: `\(snapshot.backgroundPromptApplicationOwnership)`",
+            "- background helper build: `\(snapshot.backgroundPromptAgentBuild ?? "not recorded")`",
+            "- background helper last launch: `\(optionalISODate(snapshot.backgroundPromptAgentLaunchedAt))`",
+            "- background helper last handoff: `\(optionalISODate(snapshot.backgroundPromptLastHandoffAt))`",
             "- history retention: `\(snapshot.historyRetention)`",
             "- status: `\(snapshot.statusMessage)`"
         ]
+
+        if let lastError = snapshot.backgroundPromptLastError, !lastError.isEmpty {
+            lines.append("- background helper last error: `\(redactedDiagnosticMessage(lastError, homeDirectory: homeDirectory))`")
+        }
 
         if let setupError = snapshot.setupError, !setupError.isEmpty {
             lines.append("- setup error: `\(setupError)`")
@@ -252,6 +279,33 @@ public enum DiagnosticsReportBuilder {
             return "/Volumes/\(components[1])" + (components.count > 2 ? "/..." : "")
         }
         return expanded
+    }
+
+    private static func optionalISODate(_ date: Date?) -> String {
+        guard let date else {
+            return "not recorded"
+        }
+        return isoString(from: date)
+    }
+
+    private static func redactedDiagnosticMessage(_ message: String, homeDirectory: URL) -> String {
+        var redacted = message.replacingOccurrences(of: homeDirectory.path, with: "~")
+        let patterns = [
+            #"/Volumes/[^`\n,;]+"#,
+            #"/Applications/[^`\n]+?\.app"#
+        ]
+        for pattern in patterns {
+            guard let expression = try? NSRegularExpression(pattern: pattern) else {
+                continue
+            }
+            let range = NSRange(redacted.startIndex..<redacted.endIndex, in: redacted)
+            redacted = expression.stringByReplacingMatches(
+                in: redacted,
+                range: range,
+                withTemplate: "<redacted-path>"
+            )
+        }
+        return redacted
     }
 
     private static func isoString(from date: Date) -> String {

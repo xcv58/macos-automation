@@ -9,20 +9,33 @@ public struct MountDebouncer: Sendable {
     }
 
     public mutating func shouldAccept(_ volume: MountedVolume, now: Date = Date()) -> Bool {
-        let key: String
-        if let deviceIdentifier = volume.deviceGroupIdentifier, !deviceIdentifier.isEmpty {
-            key = "device:\(deviceIdentifier)"
-        } else if let wholeDiskIdentifier = volume.wholeDiskIdentifier, !wholeDiskIdentifier.isEmpty {
-            key = "disk:\(wholeDiskIdentifier)"
-        } else {
-            key = "volume:\(volume.mountURL.standardizedFileURL.path)"
-        }
-
-        if let lastSeen = lastSeenBySource[key], now.timeIntervalSince(lastSeen) < interval {
+        guard !hasRecentlyAccepted(volume, now: now) else {
             return false
         }
 
-        lastSeenBySource[key] = now
+        recordAccepted(volume, now: now)
         return true
+    }
+
+    public func hasRecentlyAccepted(_ volume: MountedVolume, now: Date = Date()) -> Bool {
+        let key = sourceKey(for: volume)
+        guard let lastSeen = lastSeenBySource[key] else {
+            return false
+        }
+        return now.timeIntervalSince(lastSeen) < interval
+    }
+
+    public mutating func recordAccepted(_ volume: MountedVolume, now: Date = Date()) {
+        lastSeenBySource[sourceKey(for: volume)] = now
+    }
+
+    private func sourceKey(for volume: MountedVolume) -> String {
+        if let deviceIdentifier = volume.deviceGroupIdentifier, !deviceIdentifier.isEmpty {
+            return "device:\(deviceIdentifier)"
+        } else if let wholeDiskIdentifier = volume.wholeDiskIdentifier, !wholeDiskIdentifier.isEmpty {
+            return "disk:\(wholeDiskIdentifier)"
+        } else {
+            return "volume:\(volume.mountURL.standardizedFileURL.path)"
+        }
     }
 }
