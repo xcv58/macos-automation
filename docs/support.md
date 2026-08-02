@@ -30,6 +30,38 @@ full source/destination paths.
 
 Review the export before sharing it.
 
+## Card Mount Prompt Troubleshooting
+
+Settings shows the current macOS background-helper state next to `Prompt when a
+card is mounted`.
+
+- `Running`: the helper is registered, matches the installed app, and has
+  launched since the latest enable or repair attempt.
+- `Install required`: move SD Import into `/Applications` or
+  `~/Applications`. Copies launched from Downloads, a mounted DMG, or another
+  folder cannot own the background helper.
+- `Managed by installed copy`: choose `Open Installed Copy`. The copy in
+  `/Applications` takes precedence over `~/Applications`; within either folder,
+  the canonical `SD Import.app` name takes precedence over renamed copies.
+- `Needs attention`: read the detail shown below the status, then choose
+  `Repair`. Runtime launch and handoff failures stay visible until a later
+  card handoff succeeds.
+- `Needs approval`: choose `Open Login Items`, then allow SD Import under
+  System Settings > General > Login Items & Extensions.
+- `Not registered` or `Helper update needed`: leave the installed app running
+  while it retries registration and helper launch with a bounded cooldown. If
+  the state remains after the retry window, choose `Repair`.
+- `Helper missing`: install the latest SD Import in `/Applications` and remove
+  older copies or mounted installer-disk copies.
+
+If the state does not return to `Running`, export diagnostics before changing
+the setting so support can see the actual macOS helper status, ownership, build,
+last launch, last handoff, and last runtime error. Closing the last main window
+is supported: a later card mount should create a new main window and present the
+prompt without requiring a second manual launch. Mounts observed while an
+import or another prompt is active are kept in a durable queue. Card swaps that
+reuse the same `/Volumes/...` path remain separate queue entries.
+
 ## Crash Reports
 
 SD Import does not upload crash reports automatically.

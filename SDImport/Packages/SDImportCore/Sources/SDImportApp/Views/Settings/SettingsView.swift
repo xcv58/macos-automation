@@ -130,11 +130,44 @@ struct SettingsView: View {
                     VStack(alignment: .leading, spacing: 0) {
                         VStack(alignment: .leading, spacing: 5) {
                             Toggle("Prompt when a card is mounted", isOn: autoPromptBinding)
+                                .disabled(!model.backgroundPromptCanConfigure)
 
                             Text("Runs a small background helper after login so SD Import can notice newly mounted cards.")
                                 .font(.callout)
                                 .foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
+
+                            HStack(spacing: 12) {
+                                AppStatusLabel(
+                                    title: "Background helper: \(model.backgroundPromptStatusTitle)",
+                                    systemImage: backgroundPromptStatusImage,
+                                    role: backgroundPromptStatusRole
+                                )
+                                .font(.callout)
+
+                                Spacer()
+
+                                if !model.backgroundPromptCanConfigure {
+                                    Button(model.backgroundPromptApplicationOwnership.authoritativeApplicationPath == nil ? "Open Applications" : "Open Installed Copy") {
+                                        model.openBackgroundPromptOwner()
+                                    }
+                                } else if model.backgroundPromptServiceStatus == .requiresApproval {
+                                    Button("Open Login Items") {
+                                        model.openBackgroundPromptSystemSettings()
+                                    }
+                                } else if model.backgroundPromptNeedsAttention && model.backgroundPromptCanRepair {
+                                    Button("Repair") {
+                                        model.repairBackgroundPrompt()
+                                    }
+                                }
+                            }
+
+                            if model.backgroundPromptNeedsAttention || !model.backgroundPromptCanConfigure {
+                                Text(model.backgroundPromptStatusDetail)
+                                    .font(.callout)
+                                    .foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
                         }
 
                         Divider()
@@ -256,6 +289,28 @@ struct SettingsView: View {
 
     private var canCleanHistory: Bool {
         !model.isWorking && model.historyRetention.dayCount != nil
+    }
+
+    private var backgroundPromptStatusImage: String {
+        if !model.backgroundPromptCanConfigure {
+            return "exclamationmark.triangle"
+        }
+        if !model.autoPromptEnabled {
+            return "minus.circle"
+        }
+        return model.backgroundPromptNeedsAttention
+            ? "exclamationmark.triangle"
+            : "checkmark.circle"
+    }
+
+    private var backgroundPromptStatusRole: AppStatusLabel.Role {
+        if !model.backgroundPromptCanConfigure {
+            return .warning
+        }
+        if !model.autoPromptEnabled {
+            return .neutral
+        }
+        return model.backgroundPromptNeedsAttention ? .warning : .success
     }
 }
 

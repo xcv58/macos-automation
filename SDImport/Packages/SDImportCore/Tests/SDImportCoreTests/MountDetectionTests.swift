@@ -231,6 +231,27 @@ struct MountDetectionTests {
         #expect(third)
     }
 
+    @Test("mount debouncer records only committed prompt deliveries")
+    func debouncerRecordsOnlyCommittedDeliveries() {
+        var debouncer = MountDebouncer(interval: 10)
+        let volume = MountedVolume(
+            id: "card",
+            name: "CARD",
+            mountURL: URL(fileURLWithPath: "/Volumes/CARD", isDirectory: true),
+            volumeUUID: nil,
+            isRemovable: true
+        )
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+
+        #expect(debouncer.hasRecentlyAccepted(volume, now: start) == false)
+        #expect(debouncer.hasRecentlyAccepted(volume, now: start.addingTimeInterval(2)) == false)
+
+        debouncer.recordAccepted(volume, now: start.addingTimeInterval(3))
+
+        #expect(debouncer.hasRecentlyAccepted(volume, now: start.addingTimeInterval(4)))
+        #expect(debouncer.hasRecentlyAccepted(volume, now: start.addingTimeInterval(14)) == false)
+    }
+
     @Test("mount debouncer coalesces sibling volumes from one device")
     func debouncerCoalescesSiblingVolumes() {
         var debouncer = MountDebouncer(interval: 10)

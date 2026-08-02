@@ -7,22 +7,45 @@ import SwiftUI
 struct SDImportApp: App {
     @Environment(\.openWindow) private var openWindow
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @StateObject private var model = AppModel()
+    @StateObject private var model: AppModel
     @StateObject private var appUpdater = AppUpdater()
 
+    init() {
+        let model = AppModel()
+        _model = StateObject(wrappedValue: model)
+        ApplicationLifecycleCoordinator.shared.install(
+            didBecomeActive: { [weak model] in
+                model?.applicationDidBecomeActive()
+            },
+            mainWindowWillPresent: { [weak model] in
+                model?.mainWindowWillPresent()
+            },
+            mainWindowDidAppear: { [weak model] in
+                model?.mainWindowDidAppear()
+            }
+        )
+    }
+
     var body: some Scene {
-        WindowGroup("SD Import", id: "main") {
+        Window("SD Import", id: "main") {
             RootView(appUpdater: appUpdater)
                 .environmentObject(model)
                 .preferredColorScheme(model.themePreference.colorScheme)
                 .frame(minWidth: 760, minHeight: 560)
+                .background(MainWindowIdentifierView())
+                .onAppear {
+                    MainWindowPresentationCoordinator.shared.installWindowOpener {
+                        openWindow(id: "main")
+                    }
+                    ApplicationLifecycleCoordinator.shared.mainWindowDidAppear()
+                }
         }
         .commands {
             SidebarCommands()
 
             CommandGroup(replacing: .appSettings) {
                 Button("Settings…") {
-                    openWindow(id: "main")
+                    MainWindowPresenter.present()
                     model.selectPanel(.settings)
                     NSApp.activate()
                 }
@@ -33,7 +56,7 @@ struct SDImportApp: App {
                 CheckForUpdatesView(updater: appUpdater.updater)
             }
 
-            CommandGroup(after: .newItem) {
+            CommandGroup(replacing: .newItem) {
                 Button("Import From Card...") {
                     model.selection = .import
                 }

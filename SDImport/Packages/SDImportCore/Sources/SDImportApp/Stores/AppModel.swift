@@ -150,6 +150,11 @@ final class AppModel: ObservableObject {
     }
     @Published var historyRetention: RetentionPolicy
     @Published var autoPromptEnabled: Bool
+    @Published private(set) var backgroundPromptServiceStatus: BackgroundPromptServiceStatus = .notRegistered
+    @Published private(set) var backgroundPromptAgentState: BackgroundPromptAgentState?
+    @Published private(set) var backgroundPromptLastError: String?
+    private var backgroundPromptLastErrorSequence: UInt64?
+    @Published private(set) var backgroundPromptApplicationOwnership = LoginItemController.applicationOwnership
     @Published var ejectAfterSuccessfulImport: Bool
     @Published var portableImportReceiptsEnabled: Bool
     @Published var hasCompletedOnboarding: Bool
@@ -195,11 +200,23 @@ final class AppModel: ObservableObject {
     @Published var sourceValidation: PathValidationResult = .empty(purpose: .source)
     @Published var photosValidation: PathValidationResult = .empty(purpose: .destination)
     @Published var videosValidation: PathValidationResult = .empty(purpose: .destination)
-    @Published var pendingMountedVolume: MountedVolume?
+    @Published var pendingMountedVolume: MountedVolume? {
+        didSet {
+            if oldValue != nil, pendingMountedVolume == nil {
+                schedulePendingMountHandoffRetry()
+            }
+        }
+    }
     @Published var reportPresentation: ImportReportPresentation?
     @Published var statusMessage = ""
     @Published private(set) var settingsFeedback: SettingsFeedback?
-    @Published var isWorking = false
+    @Published var isWorking = false {
+        didSet {
+            if oldValue, !isWorking {
+                schedulePendingMountHandoffRetry()
+            }
+        }
+    }
     @Published private(set) var isEjectingSource = false
     @Published private(set) var ejectedSourceJobID: String?
     @Published private(set) var ejectedSourceName: String?
@@ -219,10 +236,15 @@ final class AppModel: ObservableObject {
     private var historyDetailTask: Task<Void, Never>?
     private var reportTask: Task<Void, Never>?
     private var sourceEjectionTask: Task<Void, Never>?
+    private var backgroundPromptOperationTask: Task<Void, Never>?
+    private var backgroundPromptHealthRefreshTask: Task<Void, Never>?
+    private var backgroundPromptHealthRefreshGeneration = BackgroundPromptHealthRefreshGeneration()
+    private let backgroundPromptRetryScheduler = BackgroundPromptRetryScheduler()
     private var mountedVolumesSnapshot: [MountedVolume] = []
     private var cachedSelectedSourceEjectionTarget: SourceEjectionTarget?
     private var cachedResultSourceEjectionTargets: [String: SourceEjectionTarget] = [:]
     private var mountObserver: MountEventObserver?
+    private var pendingMountHandoffRetryTask: Task<Void, Never>?
     private var workflowProfilesByVolume: [String: ImportWorkflowProfile] = [:]
     private var preferredMixedDestinationLayout: ImportDestinationLayout = .singleLibrary
     private var hiddenRecentPaths: Set<String> = []
@@ -319,7 +341,17 @@ final class AppModel: ObservableObject {
             refreshAvailableSourceVolumes()
             validatePaths()
             refreshHistory()
+            LoginItemController.invalidateApplicationOwnershipCache()
+            refreshBackgroundPromptHealth()
+            do {
+                try authorizeCurrentBackgroundPromptHelperIfNeeded()
+            } catch {
+                recordBackgroundPromptError(
+                    "Could not authorize the background helper: \(Self.errorMessage(for: error))"
+                )
+            }
             startMountObserver()
+            reconcileBackgroundPromptRegistration()
             statusMessage = legacyImportMessage
                 ?? (recovery.recoveredJobs > 0 ? "Recovered interrupted import" : "Ready")
         } catch {
@@ -329,13 +361,18 @@ final class AppModel: ObservableObject {
     }
 
     @discardableResult
-    func savePreferences(refreshFolderBookmarks: Bool = false) -> Bool {
+    func savePreferences(
+        refreshFolderBookmarks: Bool = false,
+        persistAutoPromptPreference: Bool = false
+    ) -> Bool {
         settingsFeedback = nil
         defaults.set(cardPath, forKey: DefaultsKeys.cardPath)
         defaults.set(photosPath, forKey: DefaultsKeys.photosPath)
         defaults.set(videosPath, forKey: DefaultsKeys.videosPath)
         defaults.set(location, forKey: DefaultsKeys.location)
-        defaults.set(autoPromptEnabled, forKey: DefaultsKeys.autoPromptEnabled)
+        if persistAutoPromptPreference {
+            defaults.set(autoPromptEnabled, forKey: DefaultsKeys.autoPromptEnabled)
+        }
         defaults.set(ejectAfterSuccessfulImport, forKey: DefaultsKeys.ejectAfterSuccessfulImport)
         defaults.set(portableImportReceiptsEnabled, forKey: DefaultsKeys.portableImportReceiptsEnabled)
         defaults.set(hasCompletedOnboarding, forKey: DefaultsKeys.hasCompletedOnboarding)
@@ -348,7 +385,13 @@ final class AppModel: ObservableObject {
         defaults.set(themePreference.rawValue, forKey: DefaultsKeys.themePreference)
 
         do {
-            try settingsRepository?.saveConfiguration(currentConfiguration())
+            if persistAutoPromptPreference {
+                try settingsRepository?.saveConfiguration(currentConfiguration())
+            } else {
+                try settingsRepository?.saveConfigurationPreservingAutoPromptPreference(
+                    currentConfiguration()
+                )
+            }
         } catch {
             statusMessage = "Could not save settings: \(error)"
             settingsFeedback = SettingsFeedback(message: statusMessage, role: .error)
@@ -1344,36 +1387,655 @@ final class AppModel: ObservableObject {
     }
 
     @discardableResult
-    func setAutoPromptEnabled(
-        _ enabled: Bool,
-        registration: (Bool) throws -> Void = LoginItemController.setEnabled
-    ) -> Bool {
-        do {
-            try registration(enabled)
-            autoPromptEnabled = enabled
-            let saved = savePreferences()
-            guard saved else {
-                return false
-            }
-
-            statusMessage = enabled ? "Background prompt enabled" : "Background prompt disabled"
-            settingsFeedback = SettingsFeedback(message: statusMessage, role: .information)
-            return true
-        } catch {
-            statusMessage = "Could not update background prompt: \(error)"
+    func setAutoPromptEnabled(_ enabled: Bool) -> Bool {
+        refreshBackgroundPromptHealth()
+        guard backgroundPromptCanConfigure else {
+            statusMessage = backgroundPromptStatusDetail
             settingsFeedback = SettingsFeedback(message: statusMessage, role: .error)
             return false
+        }
+        let previousValue = autoPromptEnabled
+        autoPromptEnabled = enabled
+        let saved = savePreferences(persistAutoPromptPreference: true)
+        guard saved else {
+            autoPromptEnabled = previousValue
+            defaults.set(previousValue, forKey: DefaultsKeys.autoPromptEnabled)
+            return false
+        }
+
+        enqueueBackgroundPromptOperation { model in
+            await model.performAutoPromptPreferenceChange(enabled)
+        }
+        return true
+    }
+
+    private func performAutoPromptPreferenceChange(_ enabled: Bool) async {
+        invalidateBackgroundPromptHealthRefresh()
+        LoginItemController.invalidateApplicationOwnershipCache()
+        backgroundPromptLastError = nil
+        backgroundPromptLastErrorSequence = nil
+        do {
+            try authorizeCurrentBackgroundPromptHelperIfNeeded()
+            if enabled {
+                let statusBeforeEnable = LoginItemController.status
+                if statusBeforeEnable == .notFound || statusBeforeEnable == .notRegistered {
+                    recordNotFoundRepairAttempt()
+                }
+                recordBackgroundPromptRegistrationAttempt()
+            }
+            try await LoginItemController.setEnabled(enabled)
+            refreshBackgroundPromptHealth()
+            if enabled, backgroundPromptServiceStatus == .enabled {
+                recordCurrentRepairIdentity()
+                clearNotFoundRepairAttempt()
+            } else if !enabled {
+                cancelBackgroundPromptRetry(resetAttempts: true)
+            }
+            if enabled, backgroundPromptServiceStatus == .enabled {
+                scheduleBackgroundPromptHealthRefresh()
+            } else if enabled,
+                      backgroundPromptServiceStatus == .notFound
+                        || backgroundPromptServiceStatus == .notRegistered {
+                scheduleRegistrationRetry()
+            }
+            if enabled, backgroundPromptNeedsAttention {
+                statusMessage = backgroundPromptStatusDetail
+                settingsFeedback = SettingsFeedback(message: statusMessage, role: .error)
+            } else {
+                statusMessage = enabled ? "Background prompt enabled" : "Background prompt disabled"
+                settingsFeedback = SettingsFeedback(message: statusMessage, role: .information)
+            }
+        } catch {
+            refreshBackgroundPromptHealth()
+            recordBackgroundPromptError(Self.errorMessage(for: error))
+            if enabled,
+               backgroundPromptServiceStatus == .notFound
+                || backgroundPromptServiceStatus == .notRegistered {
+                scheduleRegistrationRetry()
+            }
+            statusMessage = "Could not update background prompt: \(error)"
+            settingsFeedback = SettingsFeedback(message: statusMessage, role: .error)
         }
     }
 
     func updateLoginItemRegistration() {
+        reconcileBackgroundPromptRegistration(showFeedback: true)
+    }
+
+    func applicationDidBecomeActive() {
+        LoginItemController.invalidateApplicationOwnershipCache()
+        refreshAutoPromptPreferenceFromSharedStore()
+        mountObserver?.consumePendingHandoffs()
+        reconcileBackgroundPromptRegistration()
+    }
+
+    func mainWindowWillPresent() {
+        refreshAutoPromptPreferenceFromSharedStore()
+        mountObserver?.consumePendingHandoffs()
+        reconcileBackgroundPromptRegistration()
+    }
+
+    func mainWindowDidAppear() {
+        mountObserver?.consumePendingHandoffs()
+    }
+
+    func repairBackgroundPrompt() {
+        enqueueBackgroundPromptOperation { model in
+            await model.performBackgroundPromptRepair()
+        }
+    }
+
+    func openBackgroundPromptSystemSettings() {
+        LoginItemController.openSystemSettings()
+    }
+
+    func openBackgroundPromptOwner() {
+        LoginItemController.openAuthoritativeApplication()
+    }
+
+    var backgroundPromptCanConfigure: Bool {
+        backgroundPromptApplicationOwnership.isCurrentApplicationAuthoritative
+    }
+
+    var backgroundPromptStatusTitle: String {
+        guard backgroundPromptCanConfigure else {
+            return backgroundPromptApplicationOwnership.authoritativeApplicationPath == nil
+                ? "Install required"
+                : "Managed by installed copy"
+        }
+        guard autoPromptEnabled else {
+            return "Off"
+        }
+        if backgroundPromptEffectiveError != nil {
+            return "Needs attention"
+        }
+        switch backgroundPromptServiceStatus {
+        case .enabled:
+            return backgroundPromptAgentMismatch ? "Helper update needed" : "Running"
+        case .notRegistered:
+            return "Not registered"
+        case .requiresApproval:
+            return "Needs approval"
+        case .notFound:
+            return "Helper missing"
+        case .unknown:
+            return "Unavailable"
+        }
+    }
+
+    var backgroundPromptStatusDetail: String {
+        guard backgroundPromptCanConfigure else {
+            if let path = backgroundPromptApplicationOwnership.authoritativeApplicationPath {
+                return "Background prompts are managed by the installed copy at \(path). Open that copy to change this setting."
+            }
+            return "Move SD Import to /Applications or ~/Applications before enabling background prompts."
+        }
+        if let backgroundPromptEffectiveError {
+            return backgroundPromptEffectiveError
+        }
+        guard autoPromptEnabled else {
+            return "The background helper is disabled."
+        }
+        switch backgroundPromptServiceStatus {
+        case .enabled:
+            if backgroundPromptAgentMismatch {
+                return "The running helper does not match this app build. Repair it before relying on automatic prompts."
+            }
+            return "The background helper is registered with macOS."
+        case .notRegistered:
+            return "The saved setting is on, but the background helper is not registered."
+        case .requiresApproval:
+            return "Allow SD Import in System Settings → General → Login Items & Extensions."
+        case .notFound:
+            return "The bundled background helper could not be found. Reinstall SD Import in Applications."
+        case .unknown:
+            return "macOS returned an unrecognized background helper status."
+        }
+    }
+
+    var backgroundPromptNeedsAttention: Bool {
+        !backgroundPromptCanConfigure
+            || (autoPromptEnabled
+            && (backgroundPromptServiceStatus != .enabled
+                || backgroundPromptAgentMismatch
+                || backgroundPromptEffectiveError != nil))
+    }
+
+    var backgroundPromptCanRepair: Bool {
+        backgroundPromptCanConfigure
+            && autoPromptEnabled
+            && backgroundPromptServiceStatus != .requiresApproval
+    }
+
+    private var backgroundPromptAgentMismatch: Bool {
+        BackgroundPromptRegistrationPolicy.agentMismatch(
+            state: backgroundPromptAgentState,
+            expectedIdentity: currentRepairIdentity,
+            lastRepairIdentity: lastRepairIdentity
+        )
+    }
+
+    private var backgroundPromptEffectiveError: String? {
+        BackgroundPromptHealth.effectiveError(
+            appError: backgroundPromptLastError,
+            agentState: backgroundPromptAgentState
+        )
+    }
+
+    private var currentAppBuild: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "dev"
+    }
+
+    private var expectedEmbeddedAgentPath: String {
+        Bundle.main.bundleURL
+            .appendingPathComponent("Contents", isDirectory: true)
+            .appendingPathComponent("Library", isDirectory: true)
+            .appendingPathComponent("LoginItems", isDirectory: true)
+            .appendingPathComponent("SDImportAgent.app", isDirectory: true)
+            .standardizedFileURL.path
+    }
+
+    private var currentRepairIdentity: BackgroundPromptRepairIdentity {
+        BackgroundPromptRepairIdentity(
+            appBuild: currentAppBuild,
+            applicationPath: Bundle.main.bundleURL.path,
+            agentBundlePath: expectedEmbeddedAgentPath
+        )
+    }
+
+    private var lastRepairIdentity: BackgroundPromptRepairIdentity? {
+        guard let data = defaults.data(forKey: DefaultsKeys.lastLoginItemRepairIdentity) else {
+            return nil
+        }
+        return try? JSONDecoder().decode(BackgroundPromptRepairIdentity.self, from: data)
+    }
+
+    private var lastNotFoundRepairAttemptAt: Date? {
+        let interval = defaults.double(forKey: DefaultsKeys.lastNotFoundRepairAttemptAt)
+        return interval > 0 ? Date(timeIntervalSince1970: interval) : nil
+    }
+
+    private var lastHealthRepairAttemptAt: Date? {
+        let interval = defaults.double(forKey: DefaultsKeys.lastHealthRepairAttemptAt)
+        return interval > 0 ? Date(timeIntervalSince1970: interval) : nil
+    }
+
+    private var minimumBackgroundPromptAgentLaunchAt: Date? {
+        let interval = defaults.double(forKey: DefaultsKeys.minimumBackgroundPromptAgentLaunchAt)
+        return interval > 0 ? Date(timeIntervalSince1970: interval) : nil
+    }
+
+    private func recordNotFoundRepairAttempt() {
+        defaults.set(Date().timeIntervalSince1970, forKey: DefaultsKeys.lastNotFoundRepairAttemptAt)
+    }
+
+    private func clearNotFoundRepairAttempt() {
+        defaults.removeObject(forKey: DefaultsKeys.lastNotFoundRepairAttemptAt)
+    }
+
+    private func recordHealthRepairAttempt() {
+        defaults.set(Date().timeIntervalSince1970, forKey: DefaultsKeys.lastHealthRepairAttemptAt)
+    }
+
+    private func clearHealthRepairAttempt() {
+        defaults.removeObject(forKey: DefaultsKeys.lastHealthRepairAttemptAt)
+    }
+
+    private func recordBackgroundPromptRegistrationAttempt() {
+        defaults.set(
+            Date().timeIntervalSince1970,
+            forKey: DefaultsKeys.minimumBackgroundPromptAgentLaunchAt
+        )
+    }
+
+    private func recordCurrentRepairIdentity() {
+        guard let data = try? JSONEncoder().encode(currentRepairIdentity) else {
+            return
+        }
+        defaults.set(data, forKey: DefaultsKeys.lastLoginItemRepairIdentity)
+        LoginItemController.invalidateApplicationOwnershipCache()
+    }
+
+    private func reconcileBackgroundPromptRegistration(showFeedback: Bool = false) {
+        enqueueBackgroundPromptOperation { model in
+            await model.performBackgroundPromptReconciliation(showFeedback: showFeedback)
+        }
+    }
+
+    private func scheduleRegistrationRetry() {
+        guard
+            autoPromptEnabled,
+            hasCompletedOnboarding,
+            backgroundPromptCanConfigure,
+            backgroundPromptServiceStatus == .notFound
+                || backgroundPromptServiceStatus == .notRegistered
+        else {
+            return
+        }
+        let delay = BackgroundPromptRetryPolicy.remainingDelay(
+            lastAttemptAt: lastNotFoundRepairAttemptAt
+        )
+        backgroundPromptRetryScheduler.schedule(after: delay) { [weak self] in
+            self?.reconcileBackgroundPromptRegistration()
+        }
+    }
+
+    private func scheduleMissingHelperHealthRepair() {
+        guard
+            autoPromptEnabled,
+            hasCompletedOnboarding,
+            backgroundPromptCanConfigure,
+            backgroundPromptServiceStatus == .enabled,
+            !currentlyOwnsBackgroundPromptRegistration()
+        else {
+            return
+        }
+        let delay = BackgroundPromptRetryPolicy.remainingDelay(
+            lastAttemptAt: lastHealthRepairAttemptAt
+        )
+        backgroundPromptRetryScheduler.schedule(after: delay) { [weak self] in
+            guard let self else {
+                return
+            }
+            self.enqueueBackgroundPromptOperation { model in
+                await model.performScheduledMissingHelperHealthRepair()
+            }
+        }
+    }
+
+    private func cancelBackgroundPromptRetry(resetAttempts: Bool) {
+        backgroundPromptRetryScheduler.cancel()
+        if resetAttempts {
+            clearNotFoundRepairAttempt()
+            clearHealthRepairAttempt()
+        }
+    }
+
+    private func performScheduledMissingHelperHealthRepair() async {
+        refreshBackgroundPromptHealth()
+        let ownsRegistration = currentlyOwnsBackgroundPromptRegistration()
+        guard BackgroundPromptScheduledRepairPolicy.shouldRunMissingHelperRepair(
+            desiredEnabled: autoPromptEnabled,
+            hasCompletedOnboarding: hasCompletedOnboarding,
+            canConfigure: backgroundPromptCanConfigure,
+            serviceStatus: backgroundPromptServiceStatus,
+            ownsRegistration: ownsRegistration
+        ) else {
+            if autoPromptEnabled,
+               backgroundPromptCanConfigure,
+               (backgroundPromptServiceStatus == .notFound
+                || backgroundPromptServiceStatus == .notRegistered) {
+                scheduleRegistrationRetry()
+            } else {
+                cancelBackgroundPromptRetry(
+                    resetAttempts: !autoPromptEnabled || !backgroundPromptCanConfigure || ownsRegistration
+                )
+            }
+            return
+        }
+        recordHealthRepairAttempt()
+        await performBackgroundPromptRepair(requireDesiredEnabled: true)
+    }
+
+    private func performBackgroundPromptRepair(requireDesiredEnabled: Bool = false) async {
+        invalidateBackgroundPromptHealthRefresh()
+        LoginItemController.invalidateApplicationOwnershipCache()
+        refreshBackgroundPromptHealth()
+        guard backgroundPromptCanConfigure else {
+            cancelBackgroundPromptRetry(resetAttempts: true)
+            statusMessage = backgroundPromptStatusDetail
+            settingsFeedback = SettingsFeedback(message: statusMessage, role: .error)
+            return
+        }
+        backgroundPromptLastError = nil
+        backgroundPromptLastErrorSequence = nil
         do {
-            try LoginItemController.setEnabled(autoPromptEnabled)
-            statusMessage = autoPromptEnabled ? "Background prompt enabled" : "Background prompt disabled"
+            try authorizeCurrentBackgroundPromptHelperIfNeeded()
+            recordNotFoundRepairAttempt()
+            recordBackgroundPromptRegistrationAttempt()
+            backgroundPromptServiceStatus = try await LoginItemController.repair { [weak self] in
+                guard requireDesiredEnabled else {
+                    return true
+                }
+                guard let self else {
+                    return false
+                }
+                return BackgroundPromptScheduledRepairPolicy.canContinueRegistration(
+                    desiredEnabled: self.autoPromptEnabled,
+                    hasCompletedOnboarding: self.hasCompletedOnboarding,
+                    currentApplicationIsAuthoritative: LoginItemController
+                        .applicationOwnership
+                        .isCurrentApplicationAuthoritative
+                )
+            }
+            if backgroundPromptServiceStatus == .enabled {
+                recordCurrentRepairIdentity()
+                clearNotFoundRepairAttempt()
+            }
+            refreshBackgroundPromptHealth()
+            if backgroundPromptServiceStatus == .enabled {
+                scheduleBackgroundPromptHealthRefresh()
+            } else if backgroundPromptServiceStatus == .notFound
+                || backgroundPromptServiceStatus == .notRegistered {
+                scheduleRegistrationRetry()
+            }
+            statusMessage = backgroundPromptServiceStatus == .enabled
+                ? "Background prompt repaired"
+                : backgroundPromptStatusDetail
+            settingsFeedback = SettingsFeedback(
+                message: statusMessage,
+                role: backgroundPromptServiceStatus == .enabled ? .information : .error
+            )
         } catch {
-            statusMessage = "Could not update background prompt: \(error)"
+            recordBackgroundPromptError(Self.errorMessage(for: error))
+            refreshBackgroundPromptHealth()
+            if backgroundPromptServiceStatus == .notFound
+                || backgroundPromptServiceStatus == .notRegistered {
+                scheduleRegistrationRetry()
+            }
+            statusMessage = "Could not repair background prompt: \(Self.errorMessage(for: error))"
             settingsFeedback = SettingsFeedback(message: statusMessage, role: .error)
         }
+    }
+
+    private func performBackgroundPromptReconciliation(showFeedback: Bool) async {
+        invalidateBackgroundPromptHealthRefresh()
+        refreshBackgroundPromptHealth()
+        guard hasCompletedOnboarding else {
+            cancelBackgroundPromptRetry(resetAttempts: false)
+            return
+        }
+        guard backgroundPromptCanConfigure else {
+            cancelBackgroundPromptRetry(resetAttempts: true)
+            if showFeedback {
+                statusMessage = backgroundPromptStatusDetail
+                settingsFeedback = SettingsFeedback(message: statusMessage, role: .error)
+            }
+            return
+        }
+
+        do {
+            try authorizeCurrentBackgroundPromptHelperIfNeeded()
+            if shouldRefreshMismatchedBackgroundHelper {
+                if backgroundPromptServiceStatus == .notFound
+                    || backgroundPromptServiceStatus == .notRegistered {
+                    recordNotFoundRepairAttempt()
+                }
+                recordBackgroundPromptRegistrationAttempt()
+                backgroundPromptServiceStatus = try await LoginItemController.repair()
+                if backgroundPromptServiceStatus == .enabled {
+                    recordCurrentRepairIdentity()
+                    clearNotFoundRepairAttempt()
+                }
+            } else {
+                let statusBeforeReconciliation = backgroundPromptServiceStatus
+                let allowRegistrationAttempt = BackgroundPromptRegistrationPolicy
+                    .allowsNotFoundRegistration(lastAttemptAt: lastNotFoundRepairAttemptAt)
+                let willAttemptRegistration = BackgroundPromptRegistrationPolicy
+                    .shouldAttemptMissingRegistration(
+                        desiredEnabled: autoPromptEnabled,
+                        serviceStatus: statusBeforeReconciliation,
+                        lastAttemptAt: lastNotFoundRepairAttemptAt
+                    )
+                let registrationIsMissing = statusBeforeReconciliation == .notRegistered
+                    || statusBeforeReconciliation == .notFound
+                if willAttemptRegistration {
+                    recordNotFoundRepairAttempt()
+                    recordBackgroundPromptRegistrationAttempt()
+                }
+                backgroundPromptServiceStatus = try await LoginItemController.reconcile(
+                    desiredEnabled: autoPromptEnabled
+                        && (!registrationIsMissing || willAttemptRegistration),
+                    allowNotFoundRegistration: allowRegistrationAttempt
+                )
+                if
+                    autoPromptEnabled,
+                    statusBeforeReconciliation == .notRegistered,
+                    backgroundPromptServiceStatus == .enabled
+                {
+                    recordCurrentRepairIdentity()
+                    clearNotFoundRepairAttempt()
+                }
+            }
+            refreshBackgroundPromptHealth()
+            if autoPromptEnabled, backgroundPromptServiceStatus == .enabled {
+                scheduleBackgroundPromptHealthRefresh()
+            } else if autoPromptEnabled,
+                      backgroundPromptServiceStatus == .notFound
+                        || backgroundPromptServiceStatus == .notRegistered {
+                scheduleRegistrationRetry()
+            } else if !autoPromptEnabled {
+                cancelBackgroundPromptRetry(resetAttempts: true)
+            } else {
+                cancelBackgroundPromptRetry(resetAttempts: false)
+            }
+
+            if showFeedback {
+                statusMessage = backgroundPromptStatusDetail
+                settingsFeedback = SettingsFeedback(
+                    message: statusMessage,
+                    role: backgroundPromptNeedsAttention ? .error : .information
+                )
+            }
+        } catch {
+            backgroundPromptServiceStatus = LoginItemController.status
+            recordBackgroundPromptError(Self.errorMessage(for: error))
+            if backgroundPromptServiceStatus == .notFound
+                || backgroundPromptServiceStatus == .notRegistered {
+                scheduleRegistrationRetry()
+            } else {
+                cancelBackgroundPromptRetry(resetAttempts: false)
+            }
+            statusMessage = "Could not update background prompt: \(Self.errorMessage(for: error))"
+            settingsFeedback = SettingsFeedback(message: statusMessage, role: .error)
+        }
+    }
+
+    private var shouldRefreshMismatchedBackgroundHelper: Bool {
+        BackgroundPromptRegistrationPolicy.shouldRefreshHelper(
+            desiredEnabled: autoPromptEnabled,
+            serviceStatus: backgroundPromptServiceStatus,
+            embeddedHelperExists: LoginItemController.embeddedAgentExists,
+            state: backgroundPromptAgentState,
+            expectedIdentity: currentRepairIdentity,
+            lastRepairIdentity: lastRepairIdentity,
+            lastNotFoundRepairAttemptAt: lastNotFoundRepairAttemptAt
+        )
+    }
+
+    private func enqueueBackgroundPromptOperation(
+        _ operation: @escaping @MainActor (AppModel) async -> Void
+    ) {
+        let precedingOperation = backgroundPromptOperationTask
+        backgroundPromptOperationTask = Task { [weak self] in
+            _ = await precedingOperation?.result
+            guard let self else {
+                return
+            }
+            await operation(self)
+        }
+    }
+
+    private func recordBackgroundPromptError(
+        _ message: String,
+        eventSequence: UInt64? = nil
+    ) {
+        invalidateBackgroundPromptHealthRefresh()
+        let sequence: UInt64
+        if let eventSequence {
+            sequence = eventSequence
+        } else {
+            do {
+                sequence = try BackgroundPromptAgentStateStore.defaultStore()
+                    .reserveDiagnosticSequence(
+                        agentBuild: currentAppBuild,
+                        agentBundlePath: expectedEmbeddedAgentPath
+                    )
+            } catch {
+                let issuedSequence = (try? BackgroundPromptAgentStateStore.defaultStore()
+                    .load()?.lastIssuedSequence) ?? 0
+                let existingSequence = backgroundPromptLastErrorSequence ?? 0
+                let floor = max(issuedSequence, existingSequence)
+                sequence = floor < UInt64.max ? floor + 1 : UInt64.max
+            }
+        }
+        guard BackgroundPromptHealth.shouldRecordRuntimeAppError(
+            existingSequence: backgroundPromptLastErrorSequence,
+            candidateSequence: sequence
+        ) else {
+            return
+        }
+        backgroundPromptLastError = message
+        backgroundPromptLastErrorSequence = sequence
+    }
+
+    private func refreshBackgroundPromptHealth() {
+        backgroundPromptApplicationOwnership = LoginItemController.applicationOwnership
+        backgroundPromptServiceStatus = LoginItemController.status
+        do {
+            backgroundPromptAgentState = try BackgroundPromptAgentStateStore.defaultStore().load()
+            if BackgroundPromptHealth.shouldPreferAgentError(
+                appErrorSequence: backgroundPromptLastErrorSequence,
+                agentErrorSequence: backgroundPromptAgentState?.lastErrorSequence
+            ) {
+                backgroundPromptLastError = nil
+                backgroundPromptLastErrorSequence = nil
+            }
+            backgroundPromptLastError = BackgroundPromptHealth.appErrorAfterRefresh(
+                existingError: backgroundPromptLastError,
+                agentState: backgroundPromptAgentState
+            )
+            if backgroundPromptLastError == nil {
+                backgroundPromptLastErrorSequence = nil
+            }
+        } catch {
+            backgroundPromptAgentState = nil
+            if backgroundPromptLastError == nil {
+                recordBackgroundPromptError("Could not read background helper diagnostics")
+            }
+        }
+        if currentlyOwnsBackgroundPromptRegistration() {
+            cancelBackgroundPromptRetry(resetAttempts: true)
+            mountObserver?.consumePendingHandoffs()
+        } else if !backgroundPromptCanConfigure || !autoPromptEnabled {
+            cancelBackgroundPromptRetry(resetAttempts: true)
+        }
+    }
+
+    private func authorizeCurrentBackgroundPromptHelperIfNeeded() throws {
+        guard backgroundPromptCanConfigure else {
+            return
+        }
+        try BackgroundPromptAgentStateStore.defaultStore().authorize(
+            agentBuild: currentAppBuild,
+            agentBundlePath: expectedEmbeddedAgentPath
+        )
+    }
+
+    private func scheduleBackgroundPromptHealthRefresh() {
+        invalidateBackgroundPromptHealthRefresh()
+        let generation = backgroundPromptHealthRefreshGeneration.begin()
+        backgroundPromptHealthRefreshTask = Task { [weak self] in
+            for milliseconds in BackgroundPromptHealth.refreshDelayMilliseconds {
+                do {
+                    try await Task.sleep(for: .milliseconds(milliseconds))
+                } catch {
+                    return
+                }
+                guard
+                    let self,
+                    self.backgroundPromptHealthRefreshGeneration.isCurrent(generation)
+                else {
+                    return
+                }
+                self.refreshBackgroundPromptHealth()
+                if self.currentlyOwnsBackgroundPromptRegistration() {
+                    return
+                }
+            }
+            guard
+                let self,
+                self.autoPromptEnabled,
+                self.backgroundPromptServiceStatus == .enabled,
+                !self.currentlyOwnsBackgroundPromptRegistration(),
+                self.backgroundPromptEffectiveError == nil
+            else {
+                return
+            }
+            self.recordBackgroundPromptError(
+                BackgroundPromptHealth.ownershipTimeoutError(
+                    state: self.backgroundPromptAgentState,
+                    expectedIdentity: self.currentRepairIdentity
+                )
+            )
+            self.scheduleMissingHelperHealthRepair()
+        }
+    }
+
+    private func invalidateBackgroundPromptHealthRefresh() {
+        backgroundPromptHealthRefreshTask?.cancel()
+        backgroundPromptHealthRefreshTask = nil
+        backgroundPromptHealthRefreshGeneration.invalidate()
     }
 
     func refreshHistory() {
@@ -1497,6 +2159,7 @@ final class AppModel: ObservableObject {
         savePreferences()
         updateLoginItemRegistration()
         statusMessage = "Ready"
+        schedulePendingMountHandoffRetry()
     }
 
     func revealPhotosFolder() {
@@ -1906,6 +2569,12 @@ final class AppModel: ObservableObject {
             photosStatus: photosValidation.message,
             videosStatus: videosValidation.message,
             autoPromptEnabled: autoPromptEnabled,
+            backgroundPromptServiceStatus: backgroundPromptServiceStatus.rawValue,
+            backgroundPromptApplicationOwnership: backgroundPromptOwnershipDiagnosticValue,
+            backgroundPromptAgentBuild: backgroundPromptAgentState?.agentBuild,
+            backgroundPromptAgentLaunchedAt: backgroundPromptAgentState?.launchedAt,
+            backgroundPromptLastHandoffAt: backgroundPromptAgentState?.lastHandoffAt,
+            backgroundPromptLastError: backgroundPromptEffectiveError,
             historyRetention: historyRetention.diagnosticsTitle,
             statusMessage: statusMessage,
             setupError: setupError,
@@ -1914,6 +2583,15 @@ final class AppModel: ObservableObject {
             recentJobs: jobs.prefix(10).map(DiagnosticsJobSummary.init(job:)),
             selectedFiles: selectedJobFiles.prefix(75).map(DiagnosticsFileSummary.init(file:))
         )
+    }
+
+    private var backgroundPromptOwnershipDiagnosticValue: String {
+        if backgroundPromptApplicationOwnership.isCurrentApplicationAuthoritative {
+            return "current installed copy"
+        }
+        return backgroundPromptApplicationOwnership.authoritativeApplicationPath == nil
+            ? "installation required"
+            : "another installed copy"
     }
 
     private static var currentArchitecture: String {
@@ -2146,6 +2824,7 @@ final class AppModel: ObservableObject {
         location = configuration.defaultLocation
         historyRetention = configuration.historyRetention
         autoPromptEnabled = configuration.autoPromptEnabled
+        defaults.set(autoPromptEnabled, forKey: DefaultsKeys.autoPromptEnabled)
         ejectAfterSuccessfulImport = configuration.ejectAfterSuccessfulImport
         portableImportReceiptsEnabled = configuration.portableImportReceiptsEnabled
         hasCompletedOnboarding = configuration.hasCompletedOnboarding
@@ -2162,6 +2841,20 @@ final class AppModel: ObservableObject {
 
         if try settingsRepository.fetchConfiguration() == nil {
             try settingsRepository.saveConfiguration(currentConfiguration())
+        }
+    }
+
+    private func refreshAutoPromptPreferenceFromSharedStore() {
+        do {
+            guard let configuration = try settingsRepository?.fetchConfiguration() else {
+                return
+            }
+            if autoPromptEnabled != configuration.autoPromptEnabled {
+                autoPromptEnabled = configuration.autoPromptEnabled
+            }
+            defaults.set(configuration.autoPromptEnabled, forKey: DefaultsKeys.autoPromptEnabled)
+        } catch {
+            statusMessage = "Could not refresh background prompt settings: \(Self.errorMessage(for: error))"
         }
     }
 
@@ -2206,25 +2899,129 @@ final class AppModel: ObservableObject {
             return
         }
 
-        let observer = MountEventObserver { [weak self] volume in
+        let observer = MountEventObserver(
+            handler: { [weak self] volume in
+                guard let self else {
+                    return .deferred
+                }
+                self.refreshAvailableSourceVolumes()
+                guard BackgroundPromptDeliveryPolicy.canCommitPrompt(
+                    desiredEnabled: self.autoPromptEnabled,
+                    hasCompletedOnboarding: self.hasCompletedOnboarding,
+                    isWorking: self.isWorking,
+                    hasPendingPrompt: self.pendingMountedVolume != nil
+                ) else {
+                    return .deferred
+                }
+                self.pendingMountedVolume = volume
+                self.statusMessage = "Card detected"
+                MainWindowPresenter.present()
+                self.refreshBackgroundPromptHealth()
+                return .accepted
+            },
+            shouldHandleDirectMount: { [weak self] in
+                guard let self else {
+                    return false
+                }
+                return BackgroundPromptDeliveryPolicy.canObserveDirectMount(
+                    desiredEnabled: self.autoPromptEnabled,
+                    hasCompletedOnboarding: self.hasCompletedOnboarding,
+                    isAuthoritativeApplication: LoginItemController.applicationOwnership
+                        .isCurrentApplicationAuthoritative
+                )
+            },
+            shouldHandleHandoff: { [weak self] event in
+                guard let self else {
+                    return false
+                }
+                switch event.origin {
+                case .backgroundAgent:
+                    return self.currentlyOwnsBackgroundPromptRegistration()
+                case .foregroundApplication:
+                    return BackgroundPromptDeliveryPolicy.canObserveDirectMount(
+                        desiredEnabled: self.autoPromptEnabled,
+                        hasCompletedOnboarding: self.hasCompletedOnboarding,
+                        isAuthoritativeApplication: LoginItemController.applicationOwnership
+                            .isCurrentApplicationAuthoritative
+                    )
+                }
+            },
+            handoffAcknowledgedHandler: { [weak self] event in
+                self?.recordSuccessfulBackgroundPromptDelivery(event)
+            },
+            errorHandler: { [weak self] message, eventSequence in
+                guard let self else {
+                    return
+                }
+                self.recordBackgroundPromptError(message, eventSequence: eventSequence)
+            }
+        )
+        mountObserver = observer
+        observer.start()
+    }
+
+    private func schedulePendingMountHandoffRetry() {
+        pendingMountHandoffRetryTask?.cancel()
+        pendingMountHandoffRetryTask = Task { [weak self] in
+            await Task.yield()
             guard
+                !Task.isCancelled,
                 let self,
                 self.autoPromptEnabled,
                 self.hasCompletedOnboarding,
-                !self.isWorking
+                !self.isWorking,
+                self.pendingMountedVolume == nil,
+                BackgroundPromptDeliveryPolicy.canObserveDirectMount(
+                    desiredEnabled: self.autoPromptEnabled,
+                    hasCompletedOnboarding: self.hasCompletedOnboarding,
+                    isAuthoritativeApplication: LoginItemController.applicationOwnership
+                        .isCurrentApplicationAuthoritative
+                )
             else {
                 return
             }
-
-            self.refreshAvailableSourceVolumes()
-            guard self.pendingMountedVolume == nil else {
-                return
-            }
-            self.pendingMountedVolume = volume
-            self.statusMessage = "Card detected"
+            self.mountObserver?.consumePendingHandoffs()
         }
-        mountObserver = observer
-        observer.start()
+    }
+
+    private func recordSuccessfulBackgroundPromptDelivery(_ event: MountHandoffEvent) {
+        guard event.origin == .backgroundAgent else {
+            return
+        }
+        do {
+            try BackgroundPromptAgentStateStore.defaultStore().recordSuccessfulDelivery(
+                agentBuild: event.agentBuild,
+                agentBundlePath: expectedEmbeddedAgentPath,
+                eventSequence: event.agentSequence
+            )
+            if BackgroundPromptHealth.shouldClearRuntimeAppError(
+                errorSequence: backgroundPromptLastErrorSequence,
+                successfulSequence: event.agentSequence
+            ) {
+                backgroundPromptLastError = nil
+                backgroundPromptLastErrorSequence = nil
+            }
+            refreshBackgroundPromptHealth()
+        } catch {
+            recordBackgroundPromptError("Could not update background helper diagnostics")
+        }
+    }
+
+    private func currentlyOwnsBackgroundPromptRegistration() -> Bool {
+        let ownership = LoginItemController.applicationOwnership
+        guard
+            autoPromptEnabled,
+            ownership.isCurrentApplicationAuthoritative,
+            let state = try? BackgroundPromptAgentStateStore.defaultStore().load()
+        else {
+            return false
+        }
+        return BackgroundPromptApplicationOwnershipPolicy.ownsRegistration(
+            identity: currentRepairIdentity,
+            serviceStatus: LoginItemController.status,
+            liveAgentState: state,
+            minimumLaunchAt: minimumBackgroundPromptAgentLaunchAt
+        )
     }
 
     nonisolated private static func importStatusMessage(for progress: ImportProgress) -> String {
@@ -2455,6 +3252,10 @@ private enum DefaultsKeys {
     static let videosPath = "SDImport.videosPath"
     static let location = "SDImport.location"
     static let autoPromptEnabled = "SDImport.autoPromptEnabled"
+    static let lastLoginItemRepairIdentity = "SDImport.lastLoginItemRepairIdentity"
+    static let lastNotFoundRepairAttemptAt = "SDImport.lastNotFoundRepairAttemptAt"
+    static let lastHealthRepairAttemptAt = "SDImport.lastHealthRepairAttemptAt"
+    static let minimumBackgroundPromptAgentLaunchAt = "SDImport.minimumBackgroundPromptAgentLaunchAt"
     static let ejectAfterSuccessfulImport = "SDImport.ejectAfterSuccessfulImport"
     static let portableImportReceiptsEnabled = "SDImport.portableImportReceiptsEnabled"
     static let hasCompletedOnboarding = "SDImport.hasCompletedOnboarding"

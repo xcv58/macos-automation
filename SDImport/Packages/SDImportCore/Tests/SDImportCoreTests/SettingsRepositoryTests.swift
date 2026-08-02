@@ -39,6 +39,29 @@ struct SettingsRepositoryTests {
         #expect(try repository.fetchConfiguration() == configuration)
     }
 
+    @Test("a stale writer cannot overwrite the shared auto-prompt preference")
+    func preservesAutoPromptPreferenceAcrossWriters() throws {
+        let pool = try migratedPool()
+        let ownerRepository = SettingsRepository(pool: pool)
+        let staleRepository = SettingsRepository(pool: pool)
+        var ownerConfiguration = AppConfiguration.defaultConfiguration(
+            homeDirectory: URL(fileURLWithPath: "/Users/example", isDirectory: true)
+        )
+        var staleConfiguration = ownerConfiguration
+
+        ownerConfiguration.autoPromptEnabled = true
+        try ownerRepository.saveConfiguration(ownerConfiguration)
+
+        staleConfiguration.autoPromptEnabled = false
+        staleConfiguration.defaultLocation = "Saved by stale copy"
+        try staleRepository.saveConfigurationPreservingAutoPromptPreference(staleConfiguration)
+
+        let fetched = try ownerRepository.fetchConfiguration()
+        let saved = try #require(fetched)
+        #expect(saved.autoPromptEnabled)
+        #expect(saved.defaultLocation == "Saved by stale copy")
+    }
+
     @Test("decodes older app configuration without workflow fields")
     func decodesOlderConfigurationWithoutWorkflowFields() throws {
         let json = """

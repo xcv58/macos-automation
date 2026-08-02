@@ -32,6 +32,9 @@ The export includes:
 - App version and build.
 - macOS version and architecture.
 - Sparkle feed configuration status.
+- Saved background-prompt preference, macOS helper status, redacted installed-copy
+  ownership state, helper build, last launch, last mount handoff, and a redacted
+  helper error when present.
 - Redacted source and destination paths.
 - Recent local crash-report metadata, without crash-report filenames.
 - Recent job counts and statuses.
