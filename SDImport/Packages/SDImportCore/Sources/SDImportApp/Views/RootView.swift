@@ -33,6 +33,9 @@ struct RootView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(AppSurfacePalette.contentBackground)
+            .overlay(alignment: .top) {
+                DetailTitleBarBacking()
+            }
         }
         .navigationSplitViewStyle(.balanced)
         .sheet(isPresented: onboardingBinding) {
@@ -69,6 +72,16 @@ struct RootView: View {
         } set: { volume in
             model.pendingMountedVolume = volume
         }
+    }
+}
+
+private struct DetailTitleBarBacking: View {
+    var body: some View {
+        AppSurfacePalette.contentBackground
+            .frame(height: 36)
+            .ignoresSafeArea(edges: .top)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
     }
 }
 

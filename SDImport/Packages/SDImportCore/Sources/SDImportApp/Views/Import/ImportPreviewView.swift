@@ -5,16 +5,39 @@ import SwiftUI
 struct ImportPreviewView: View {
     @EnvironmentObject private var model: AppModel
     @AppStorage("SDImport.importPreviewMode") private var previewMode = ImportPreviewMode.grid
-    @State private var fileFilter: ImportPreviewFileFilter = .copy
+    @State private var selectedFileFilter: ImportPreviewFileFilter?
+    @State private var filePage = 0
     @State private var selectedRowID: Int64?
     @State private var showsDateCustomization = false
-    @State private var showsZeroCopyFiles = false
     @StateObject private var thumbnailProvider = ImportThumbnailProvider()
     @StateObject private var quickLook = ImportQuickLookController()
     @AccessibilityFocusState private var reviewHeadingIsFocused: Bool
 
-    private var displayedRows: [ImportPreviewRow] {
+    private let filePageSize = 100
+
+    private var fileFilter: ImportPreviewFileFilter {
+        selectedFileFilter ?? (model.previewTotals.copyFiles == 0 ? .skipped : .copy)
+    }
+
+    private var filteredRows: [ImportPreviewRow] {
         sortedRows(model.previewRows.filter(fileFilter.includes))
+    }
+
+    private var filePageCount: Int {
+        max(1, Int(ceil(Double(filteredRows.count) / Double(filePageSize))))
+    }
+
+    private var currentFilePage: Int {
+        min(filePage, filePageCount - 1)
+    }
+
+    private var pagedRows: [ImportPreviewRow] {
+        let start = currentFilePage * filePageSize
+        let end = min(start + filePageSize, filteredRows.count)
+        guard start < end else {
+            return []
+        }
+        return Array(filteredRows[start..<end])
     }
 
     private var selectedRow: ImportPreviewRow? {
@@ -23,7 +46,11 @@ struct ImportPreviewView: View {
 
     var body: some View {
         AppPage(maxContentWidth: .infinity) {
-            VStack(alignment: .leading, spacing: 14) {
+            LazyVStack(
+                alignment: .leading,
+                spacing: 14,
+                pinnedViews: [.sectionHeaders]
+            ) {
                 reviewHeading
                 ImportSourceSummaryView(
                     allowsChange: true,
@@ -33,18 +60,17 @@ struct ImportPreviewView: View {
 
                 if model.previewTotals.copyFiles == 0 {
                     zeroCopyCard
-                    if showsZeroCopyFiles {
-                        fileBrowser
-                    }
                 } else {
                     importPlanCard
-                    fileBrowser
                 }
+                fileBrowser
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            ImportReviewFooter()
-                .environmentObject(model)
+            if model.previewTotals.copyFiles > 0 {
+                ImportReviewFooter()
+                    .environmentObject(model)
+            }
         }
         .inspector(isPresented: inspectorBinding) {
             if let selectedRow {
@@ -60,6 +86,15 @@ struct ImportPreviewView: View {
         .onChange(of: model.cardPath) {
             thumbnailProvider.cancelAll()
             quickLook.dismiss()
+            selectedFileFilter = nil
+            filePage = 0
+            selectedRowID = nil
+        }
+        .onChange(of: model.previewRows.count) {
+            filePage = 0
+            if selectedRow == nil {
+                selectedRowID = nil
+            }
         }
         .onChange(of: model.importUIPhase) {
             if model.importUIPhase != .review {
@@ -420,27 +455,15 @@ struct ImportPreviewView: View {
             HStack(spacing: 8) {
                 if canRecoverPhotos {
                     Button("Import Photos") {
-                        fileFilter = .copy
+                        selectFileFilter(.copy)
                         model.applyWorkflowProfile(.photoImport)
                     }
                     .buttonStyle(.bordered)
                 }
                 if canRecoverVideos {
                     Button("Import Videos") {
-                        fileFilter = .copy
+                        selectFileFilter(.copy)
                         model.applyWorkflowProfile(.footageBackup)
-                    }
-                    .buttonStyle(.bordered)
-                }
-
-                if !model.previewRows.isEmpty {
-                    Button(showsZeroCopyFiles ? "Hide File Details" : zeroCopyReviewButtonTitle) {
-                        if showsZeroCopyFiles {
-                            showsZeroCopyFiles = false
-                        } else {
-                            fileFilter = .skipped
-                            showsZeroCopyFiles = true
-                        }
                     }
                     .buttonStyle(.bordered)
                 }
@@ -448,17 +471,32 @@ struct ImportPreviewView: View {
         }
     }
 
-    private var zeroCopyReviewButtonTitle: String {
-        let skippedCount = model.previewRows.filter { !$0.willCopy }.count
-        return skippedCount == 1 ? "Review 1 Skipped File" : "Review \(skippedCount) Skipped Files"
+    private var fileBrowser: some View {
+        Section {
+            fileBrowserBody
+        } header: {
+            fileBrowserToolbar
+                .padding(14)
+                .background(
+                    .bar,
+                    in: .rect(
+                        topLeadingRadius: 8,
+                        topTrailingRadius: 8
+                    )
+                )
+                .overlay(alignment: .bottom) {
+                    Rectangle()
+                        .fill(AppSurfacePalette.separator.opacity(0.55))
+                        .frame(height: 1)
+                }
+                .zIndex(1)
+        }
     }
 
-    private var fileBrowser: some View {
+    private var fileBrowserBody: some View {
         VStack(alignment: .leading, spacing: 8) {
-            fileBrowserToolbar
-
             Group {
-                if displayedRows.isEmpty {
+                if filteredRows.isEmpty {
                     ContentUnavailableView(
                         "No Matching Files",
                         systemImage: "line.3.horizontal.decrease.circle"
@@ -472,9 +510,20 @@ struct ImportPreviewView: View {
             }
             .accessibilityElement(children: .contain)
             .accessibilityLabel("Import file preview")
+
+            if filePageCount > 1 {
+                filePagination
+            }
         }
-        .padding(14)
-        .appCardSurface()
+        .padding(.horizontal, 14)
+        .padding(.bottom, 14)
+        .background(
+            .bar,
+            in: .rect(
+                bottomLeadingRadius: 8,
+                bottomTrailingRadius: 8
+            )
+        )
     }
 
     private var fileBrowserToolbar: some View {
@@ -500,14 +549,21 @@ struct ImportPreviewView: View {
         VStack(alignment: .leading, spacing: 2) {
             Text("Files")
                 .font(.headline)
-            Text("\(displayedRows.count) of \(model.previewRows.count)")
+            Text(fileBrowserSubtitle)
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
     }
 
+    private var fileBrowserSubtitle: String {
+        let count = "\(filteredRows.count) of \(model.previewRows.count)"
+        return model.previewTotals.copyFiles == 0
+            ? "\(count) · Nothing selected"
+            : count
+    }
+
     private var filterPicker: some View {
-        Picker("File Filter", selection: $fileFilter) {
+        Picker("File Filter", selection: fileFilterBinding) {
             ForEach(ImportPreviewFileFilter.allCases) { filter in
                 Text(filterTitle(filter)).tag(filter)
             }
@@ -520,7 +576,7 @@ struct ImportPreviewView: View {
     }
 
     private var filterMenu: some View {
-        Picker("File Filter", selection: $fileFilter) {
+        Picker("File Filter", selection: fileFilterBinding) {
             ForEach(ImportPreviewFileFilter.allCases) { filter in
                 Text(filterTitle(filter)).tag(filter)
             }
@@ -545,7 +601,7 @@ struct ImportPreviewView: View {
         LazyVStack(spacing: 0) {
             fileListHeader
 
-            ForEach(displayedRows) { row in
+            ForEach(pagedRows) { row in
                 Button {
                     selectedRowID = row.id
                 } label: {
@@ -604,7 +660,7 @@ struct ImportPreviewView: View {
             alignment: .leading,
             spacing: 10
         ) {
-            ForEach(visualItems(from: displayedRows)) { item in
+            ForEach(visualItems(from: pagedRows)) { item in
                 Button {
                     selectedRowID = item.primaryRow.id
                 } label: {
@@ -634,6 +690,61 @@ struct ImportPreviewView: View {
             presentSelectedQuickLook()
             return .handled
         }
+    }
+
+    private var filePagination: some View {
+        HStack(spacing: 10) {
+            Text(filePageRangeText)
+                .foregroundStyle(.secondary)
+
+            Spacer(minLength: 8)
+
+            Button {
+                filePage = max(0, currentFilePage - 1)
+                selectedRowID = nil
+            } label: {
+                Label("Previous Page", systemImage: "chevron.left")
+            }
+            .labelStyle(.iconOnly)
+            .disabled(currentFilePage == 0)
+            .help("Previous page")
+
+            Text("Page \(currentFilePage + 1) of \(filePageCount)")
+                .monospacedDigit()
+
+            Button {
+                filePage = min(filePageCount - 1, currentFilePage + 1)
+                selectedRowID = nil
+            } label: {
+                Label("Next Page", systemImage: "chevron.right")
+            }
+            .labelStyle(.iconOnly)
+            .disabled(currentFilePage == filePageCount - 1)
+            .help("Next page")
+        }
+        .font(.caption)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("File pages")
+    }
+
+    private var filePageRangeText: String {
+        let start = currentFilePage * filePageSize + 1
+        let end = min(start + filePageSize - 1, filteredRows.count)
+        return "Showing \(start)\u{2013}\(end) of \(filteredRows.count)"
+    }
+
+    private var fileFilterBinding: Binding<ImportPreviewFileFilter> {
+        Binding {
+            fileFilter
+        } set: { filter in
+            selectFileFilter(filter)
+        }
+    }
+
+    private func selectFileFilter(_ filter: ImportPreviewFileFilter) {
+        selectedFileFilter = filter
+        filePage = 0
+        selectedRowID = nil
     }
 
     private var inspectorBinding: Binding<Bool> {
@@ -1055,7 +1166,9 @@ private struct ImportPreviewListRow: View {
         .padding(.vertical, 8)
         .background(isSelected ? Color.accentColor.opacity(0.14) : Color.clear)
         .overlay(alignment: .bottom) {
-            Divider()
+            Rectangle()
+                .fill(AppSurfacePalette.separator.opacity(0.55))
+                .frame(height: 1)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityLabel)

@@ -40,6 +40,8 @@ struct SDImportApp: App {
                     ApplicationLifecycleCoordinator.shared.mainWindowDidAppear()
                 }
         }
+        .windowStyle(.hiddenTitleBar)
+        .windowToolbarStyle(.unifiedCompact(showsTitle: false))
         .commands {
             SidebarCommands()
 

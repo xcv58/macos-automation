@@ -14,18 +14,6 @@ struct HistoryView: View {
             historyLayout
         }
         .navigationTitle("History")
-        .toolbar {
-            ToolbarItem {
-                Button {
-                    model.refreshHistory()
-                } label: {
-                    Label("Refresh", systemImage: "arrow.clockwise")
-                }
-                .disabled(model.isHistoryLoading)
-                .help("Refresh history")
-                .accessibilityLabel("Refresh history")
-            }
-        }
         .onAppear {
             let importJobs = model.jobs.filter(\.isImportHistoryEntry)
             let selectedJobIsVisible = model.selectedJobID.map { selectedJobID in
@@ -50,8 +38,22 @@ struct HistoryView: View {
 
     private var recentJobsSection: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Label("Recent Imports", systemImage: "clock.arrow.circlepath")
-                .font(.headline)
+            HStack(spacing: 8) {
+                Label("Recent Imports", systemImage: "clock.arrow.circlepath")
+                    .font(.headline)
+
+                Spacer()
+
+                Button {
+                    model.refreshHistory()
+                } label: {
+                    Label("Refresh", systemImage: "arrow.clockwise")
+                }
+                .labelStyle(.iconOnly)
+                .disabled(model.isHistoryLoading)
+                .help("Refresh history")
+                .accessibilityLabel("Refresh history")
+            }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 10)
 
