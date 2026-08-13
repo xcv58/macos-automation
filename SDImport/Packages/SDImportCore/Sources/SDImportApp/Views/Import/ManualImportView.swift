@@ -247,19 +247,48 @@ struct ImportSourceSummaryView: View {
 
     var allowsChange = true
     var allowsRescan = false
+    var compact = false
 
     var body: some View {
-        AppSection("Source", systemImage: "externaldrive") {
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 12) {
-                    sourceIdentity
-                    Spacer(minLength: 12)
-                    actions
-                }
+        Group {
+            if compact {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "externaldrive")
+                            .foregroundStyle(.secondary)
+                        sourceIdentity
+                        Spacer(minLength: 12)
+                        actions
+                    }
 
-                VStack(alignment: .leading, spacing: 10) {
-                    sourceIdentity
-                    actions
+                    VStack(alignment: .leading, spacing: 10) {
+                        Label {
+                            sourceIdentity
+                        } icon: {
+                            Image(systemName: "externaldrive")
+                                .foregroundStyle(.secondary)
+                        }
+                        actions
+                    }
+                }
+                .padding(12)
+                .appCardSurface()
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel("Source")
+            } else {
+                AppSection("Source", systemImage: "externaldrive") {
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 12) {
+                            sourceIdentity
+                            Spacer(minLength: 12)
+                            actions
+                        }
+
+                        VStack(alignment: .leading, spacing: 10) {
+                            sourceIdentity
+                            actions
+                        }
+                    }
                 }
             }
         }

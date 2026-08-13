@@ -4,10 +4,11 @@ import SwiftUI
 
 struct ImportPreviewView: View {
     @EnvironmentObject private var model: AppModel
-    @AppStorage("SDImport.importPreviewMode") private var previewMode = ImportPreviewMode.list
-    @State private var fileFilter: ImportPreviewFileFilter = .all
+    @AppStorage("SDImport.importPreviewMode") private var previewMode = ImportPreviewMode.grid
+    @State private var fileFilter: ImportPreviewFileFilter = .copy
     @State private var selectedRowID: Int64?
     @State private var showsDateCustomization = false
+    @State private var showsZeroCopyFiles = false
     @StateObject private var thumbnailProvider = ImportThumbnailProvider()
     @StateObject private var quickLook = ImportQuickLookController()
     @AccessibilityFocusState private var reviewHeadingIsFocused: Bool
@@ -21,27 +22,24 @@ struct ImportPreviewView: View {
     }
 
     var body: some View {
-        AppPage(scrolls: false, maxContentWidth: .infinity) {
+        AppPage(maxContentWidth: .infinity) {
             VStack(alignment: .leading, spacing: 14) {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 14) {
-                        reviewHeading
-                        ImportSourceSummaryView(allowsChange: true, allowsRescan: true)
+                reviewHeading
+                ImportSourceSummaryView(
+                    allowsChange: true,
+                    allowsRescan: true,
+                    compact: true
+                )
 
-                        if model.previewTotals.copyFiles == 0 {
-                            zeroCopyCard
-                        } else {
-                            importPlanCard
-                        }
+                if model.previewTotals.copyFiles == 0 {
+                    zeroCopyCard
+                    if showsZeroCopyFiles {
+                        fileBrowser
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    importPlanCard
+                    fileBrowser
                 }
-                .frame(minHeight: 180, idealHeight: 280, maxHeight: 360)
-                .accessibilityLabel("Import plan and source")
-
-                fileBrowser
-                    .frame(minHeight: 160)
-                    .frame(maxHeight: .infinity)
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -422,18 +420,37 @@ struct ImportPreviewView: View {
             HStack(spacing: 8) {
                 if canRecoverPhotos {
                     Button("Import Photos") {
+                        fileFilter = .copy
                         model.applyWorkflowProfile(.photoImport)
                     }
                     .buttonStyle(.bordered)
                 }
                 if canRecoverVideos {
                     Button("Import Videos") {
+                        fileFilter = .copy
                         model.applyWorkflowProfile(.footageBackup)
+                    }
+                    .buttonStyle(.bordered)
+                }
+
+                if !model.previewRows.isEmpty {
+                    Button(showsZeroCopyFiles ? "Hide File Details" : zeroCopyReviewButtonTitle) {
+                        if showsZeroCopyFiles {
+                            showsZeroCopyFiles = false
+                        } else {
+                            fileFilter = .skipped
+                            showsZeroCopyFiles = true
+                        }
                     }
                     .buttonStyle(.bordered)
                 }
             }
         }
+    }
+
+    private var zeroCopyReviewButtonTitle: String {
+        let skippedCount = model.previewRows.filter { !$0.willCopy }.count
+        return skippedCount == 1 ? "Review 1 Skipped File" : "Review \(skippedCount) Skipped Files"
     }
 
     private var fileBrowser: some View {
@@ -525,46 +542,32 @@ struct ImportPreviewView: View {
     }
 
     private var fileTable: some View {
-        Table(displayedRows, selection: $selectedRowID) {
-            TableColumn("Status") { row in
-                PreviewStatusBadge(row: row)
-            }
-            .width(min: 105, ideal: 125)
+        LazyVStack(spacing: 0) {
+            fileListHeader
 
-            TableColumn("File", value: \.filename)
-                .width(min: 150, ideal: 240)
-
-            TableColumn("Kind") { row in
-                Text(row.mediaKind.displayTitle)
-                    .foregroundStyle(.secondary)
-            }
-            .width(min: 70, ideal: 84)
-
-            TableColumn("Size") { row in
-                Text(ByteCountFormatter.string(fromByteCount: row.size, countStyle: .file))
-                    .foregroundStyle(.secondary)
-            }
-            .width(min: 72, ideal: 88)
-
-            TableColumn("Destination") { row in
-                Text(destinationText(for: row))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .foregroundStyle(row.willCopy ? .primary : .secondary)
-                    .help(row.destinationPath ?? row.sourcePath)
-            }
-            .width(min: 180, ideal: 360)
-        }
-        .contextMenu(forSelectionType: Int64.self) { selection in
-            Button("Quick Look") {
-                if let id = selection.first, let row = model.previewRows.first(where: { $0.id == id }) {
-                    presentQuickLook(for: row)
+            ForEach(displayedRows) { row in
+                Button {
+                    selectedRowID = row.id
+                } label: {
+                    ImportPreviewListRow(
+                        row: row,
+                        destinationText: destinationText(for: row),
+                        isSelected: selectedRowID == row.id
+                    )
+                    .contentShape(Rectangle())
                 }
-            }
-            .disabled(selection.isEmpty)
-        } primaryAction: { selection in
-            if let id = selection.first, let row = model.previewRows.first(where: { $0.id == id }) {
-                presentQuickLook(for: row)
+                .buttonStyle(.plain)
+                .simultaneousGesture(TapGesture(count: 2).onEnded {
+                    selectedRowID = row.id
+                    presentQuickLook(for: row)
+                })
+                .contextMenu {
+                    Button("Quick Look") {
+                        selectedRowID = row.id
+                        presentQuickLook(for: row)
+                    }
+                }
+                .accessibilityHint("Press Space for Quick Look")
             }
         }
         .onKeyPress(.space) {
@@ -574,40 +577,59 @@ struct ImportPreviewView: View {
         .accessibilityIdentifier("import.review.file-table")
     }
 
-    private var fileGrid: some View {
-        ScrollView {
-            LazyVGrid(
-                columns: [GridItem(.adaptive(minimum: 155, maximum: 240), spacing: 10)],
-                alignment: .leading,
-                spacing: 10
-            ) {
-                ForEach(visualItems(from: displayedRows)) { item in
-                    Button {
-                        selectedRowID = item.primaryRow.id
-                    } label: {
-                        ImportPreviewGridCell(
-                            item: item,
-                            isSelected: item.rows.contains { $0.id == selectedRowID },
-                            thumbnailProvider: thumbnailProvider
-                        )
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .simultaneousGesture(TapGesture(count: 2).onEnded {
-                        selectedRowID = item.primaryRow.id
-                        presentQuickLook(for: item.primaryRow)
-                    })
-                    .onKeyPress(.space) {
-                        selectedRowID = item.primaryRow.id
-                        presentQuickLook(for: item.primaryRow)
-                        return .handled
-                    }
-                    .accessibilityHint("Press Space for Quick Look")
-                    .accessibilityIdentifier("import.review.grid-item.\(item.primaryRow.id)")
-                }
-            }
-            .padding(.vertical, 4)
+    private var fileListHeader: some View {
+        HStack(spacing: 12) {
+            Text("Status")
+                .frame(width: 112, alignment: .leading)
+            Text("File")
+                .frame(minWidth: 150, maxWidth: 240, alignment: .leading)
+            Text("Kind")
+                .frame(width: 72, alignment: .leading)
+            Text("Size")
+                .frame(width: 80, alignment: .trailing)
+            Text("Destination")
+                .frame(minWidth: 180, maxWidth: .infinity, alignment: .leading)
         }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(Color.secondary.opacity(0.06))
+        .accessibilityHidden(true)
+    }
+
+    private var fileGrid: some View {
+        LazyVGrid(
+            columns: [GridItem(.adaptive(minimum: 155, maximum: 240), spacing: 10)],
+            alignment: .leading,
+            spacing: 10
+        ) {
+            ForEach(visualItems(from: displayedRows)) { item in
+                Button {
+                    selectedRowID = item.primaryRow.id
+                } label: {
+                    ImportPreviewGridCell(
+                        item: item,
+                        isSelected: item.rows.contains { $0.id == selectedRowID },
+                        thumbnailProvider: thumbnailProvider
+                    )
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .simultaneousGesture(TapGesture(count: 2).onEnded {
+                    selectedRowID = item.primaryRow.id
+                    presentQuickLook(for: item.primaryRow)
+                })
+                .onKeyPress(.space) {
+                    selectedRowID = item.primaryRow.id
+                    presentQuickLook(for: item.primaryRow)
+                    return .handled
+                }
+                .accessibilityHint("Press Space for Quick Look")
+                .accessibilityIdentifier("import.review.grid-item.\(item.primaryRow.id)")
+            }
+        }
+        .padding(.vertical, 4)
         .onKeyPress(.space) {
             presentSelectedQuickLook()
             return .handled
@@ -995,6 +1017,53 @@ private struct PreviewStatusBadge: View {
         case .normal:
             return row.willCopy ? .green : .secondary
         }
+    }
+}
+
+private struct ImportPreviewListRow: View {
+    let row: ImportPreviewRow
+    let destinationText: String
+    let isSelected: Bool
+
+    var body: some View {
+        HStack(spacing: 12) {
+            PreviewStatusBadge(row: row)
+                .frame(width: 112, alignment: .leading)
+
+            Text(row.filename)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .frame(minWidth: 150, maxWidth: 240, alignment: .leading)
+
+            Text(row.mediaKind.displayTitle)
+                .foregroundStyle(.secondary)
+                .frame(width: 72, alignment: .leading)
+
+            Text(ByteCountFormatter.string(fromByteCount: row.size, countStyle: .file))
+                .foregroundStyle(.secondary)
+                .frame(width: 80, alignment: .trailing)
+
+            Text(destinationText)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .foregroundStyle(row.willCopy ? .primary : .secondary)
+                .frame(minWidth: 180, maxWidth: .infinity, alignment: .leading)
+                .help(row.destinationPath ?? row.sourcePath)
+        }
+        .font(.callout)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(isSelected ? Color.accentColor.opacity(0.14) : Color.clear)
+        .overlay(alignment: .bottom) {
+            Divider()
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityLabel)
+    }
+
+    private var accessibilityLabel: String {
+        let size = ByteCountFormatter.string(fromByteCount: row.size, countStyle: .file)
+        return "\(row.filename), \(row.status), \(row.mediaKind.displayTitle), \(size), \(destinationText)"
     }
 }
 
