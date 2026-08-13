@@ -21,6 +21,18 @@ struct PhotoPairDetectorTests {
         #expect(summary.jpegOnlyCount == 1)
     }
 
+    @Test("returns the concrete members of each RAW and JPEG visual group")
+    func returnsConcretePairMembers() throws {
+        let raw = jobFile(relativePath: "DCIM/100MEDIA/IMG_0001.ARW", ext: ".ARW", mediaKind: .photo)
+        let jpeg = jobFile(relativePath: "DCIM/100MEDIA/IMG_0001.JPG", ext: ".JPG", mediaKind: .photo)
+
+        let group = try #require(PhotoPairDetector().groups(files: [jpeg, raw]).first)
+
+        #expect(group.isPair)
+        #expect(group.rawFiles.map(\.filename) == ["IMG_0001.ARW"])
+        #expect(group.jpegFiles.map(\.filename) == ["IMG_0001.JPG"])
+    }
+
     @Test("does not pair files from different folders")
     func doesNotPairFilesFromDifferentFolders() {
         let files = [

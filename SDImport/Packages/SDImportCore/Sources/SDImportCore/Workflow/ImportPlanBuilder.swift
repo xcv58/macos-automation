@@ -32,27 +32,92 @@ public struct ImportPlanSession: Identifiable, Hashable, Sendable {
     }
 }
 
+public enum ImportPlanAttention: Int, Comparable, Hashable, Sendable {
+    case normal
+    case informational
+    case attention
+    case blocking
+
+    public static func < (lhs: ImportPlanAttention, rhs: ImportPlanAttention) -> Bool {
+        lhs.rawValue < rhs.rawValue
+    }
+}
+
+public enum ImportPlanDisposition: Hashable, Sendable {
+    case notReady
+    case copied
+    case unsupported
+    case excluded
+    case known(KnownFileSource?)
+    case noDestination
+    case alreadyExists
+    case rename(originalPath: String, destinationPath: String, reason: String?)
+    case supportFile
+    case copy
+
+    public var title: String {
+        switch self {
+        case .notReady:
+            return "Not ready"
+        case .copied:
+            return "Copied"
+        case .unsupported:
+            return "Unsupported"
+        case .excluded:
+            return "Excluded"
+        case .known(let source):
+            return source == .portableLedger ? "Other Mac" : "Known"
+        case .noDestination:
+            return "No destination"
+        case .alreadyExists:
+            return "Already exists"
+        case .rename:
+            return "Rename"
+        case .supportFile:
+            return "Support file"
+        case .copy:
+            return "Will copy"
+        }
+    }
+
+    public var attention: ImportPlanAttention {
+        switch self {
+        case .notReady, .noDestination:
+            return .blocking
+        case .rename, .known(.portableLedger):
+            return .attention
+        case .unsupported, .excluded, .known, .alreadyExists:
+            return .informational
+        case .copied, .supportFile, .copy:
+            return .normal
+        }
+    }
+}
+
 public struct ImportFilePlan: Sendable {
     public let update: JobFilePlanUpdate?
     public let willCopy: Bool
-    public let status: String
+    public let disposition: ImportPlanDisposition
     public let destinationPath: String?
+
+    public var status: String { disposition.title }
 
     public init(
         update: JobFilePlanUpdate?,
         willCopy: Bool,
-        status: String,
+        disposition: ImportPlanDisposition,
         destinationPath: String?
     ) {
         self.update = update
         self.willCopy = willCopy
-        self.status = status
+        self.disposition = disposition
         self.destinationPath = destinationPath
     }
 }
 
 public struct ImportPlanBuilder: Sendable {
     public let sessions: [ImportPlanSession]
+    public let mediaSelection: ImportMediaSelection
     public let organizationPreset: ImportOrganizationPreset
     public let folderGrouping: ImportFolderGrouping
     public let roots: DestinationRoots
@@ -61,6 +126,7 @@ public struct ImportPlanBuilder: Sendable {
 
     public init(
         sessions: [ImportPlanSession],
+        mediaSelection: ImportMediaSelection = .photosAndVideos,
         organizationPreset: ImportOrganizationPreset,
         folderGrouping: ImportFolderGrouping = .byDay,
         roots: DestinationRoots,
@@ -68,6 +134,7 @@ public struct ImportPlanBuilder: Sendable {
         volumeName: String?
     ) {
         self.sessions = sessions
+        self.mediaSelection = mediaSelection
         self.organizationPreset = organizationPreset
         self.folderGrouping = folderGrouping
         self.roots = roots
@@ -99,7 +166,7 @@ public struct ImportPlanBuilder: Sendable {
             return ImportFilePlan(
                 update: nil,
                 willCopy: false,
-                status: "Not ready",
+                disposition: .notReady,
                 destinationPath: file.finalDestinationPath ?? file.plannedDestinationPath
             )
         }
@@ -108,7 +175,7 @@ public struct ImportPlanBuilder: Sendable {
             return ImportFilePlan(
                 update: nil,
                 willCopy: false,
-                status: "Copied",
+                disposition: .copied,
                 destinationPath: file.finalDestinationPath ?? file.plannedDestinationPath
             )
         }
@@ -118,14 +185,15 @@ public struct ImportPlanBuilder: Sendable {
         let label = folderLabel(for: session)
         let folderDate = folderDate(for: date)
 
-        let isFootageSidecar = organizationPreset == .footageBackup
+        let isFootageSupportFile = organizationPreset == .footageBackup
             && (file.mediaKind == .unsupported || MediaFileHeuristics.isLikelyVideoPreviewJPEG(file))
+            && mediaSelection.includes(.video)
             && (session?.includeSidecars ?? false)
         let shouldTreatAsUnsupported = file.mediaKind == .unsupported
             || file.decision == .unsupported
             || (organizationPreset == .footageBackup && MediaFileHeuristics.isLikelyVideoPreviewJPEG(file))
 
-        if shouldTreatAsUnsupported && !isFootageSidecar {
+        if shouldTreatAsUnsupported && !isFootageSupportFile {
             return ImportFilePlan(
                 update: JobFilePlanUpdate(
                     id: id,
@@ -136,20 +204,20 @@ public struct ImportPlanBuilder: Sendable {
                     error: "unsupported"
                 ),
                 willCopy: false,
-                status: "Unsupported",
+                disposition: .unsupported,
                 destinationPath: nil
             )
         }
 
         let included: Bool
-        if isFootageSidecar {
+        if isFootageSupportFile {
             included = true
         } else {
             switch file.mediaKind {
             case .photo:
-                included = session?.includePhotos ?? true
+                included = mediaSelection.includes(.photo) && (session?.includePhotos ?? true)
             case .video:
-                included = session?.includeVideos ?? true
+                included = mediaSelection.includes(.video) && (session?.includeVideos ?? true)
             case .unsupported:
                 included = false
             }
@@ -166,7 +234,7 @@ public struct ImportPlanBuilder: Sendable {
                     error: "excluded_by_import_selection"
                 ),
                 willCopy: false,
-                status: "Excluded",
+                disposition: .excluded,
                 destinationPath: nil
             )
         }
@@ -182,13 +250,13 @@ public struct ImportPlanBuilder: Sendable {
                     error: nil
                 ),
                 willCopy: false,
-                status: file.knownSource == .portableLedger ? "Other Mac" : "Known",
+                disposition: .known(file.knownSource),
                 destinationPath: file.plannedDestinationPath
             )
         }
 
         let planner = DestinationPlanner()
-        let destinationMediaKind: MediaKind = isFootageSidecar ? .unsupported : file.mediaKind
+        let destinationMediaKind: MediaKind = isFootageSupportFile ? .unsupported : file.mediaKind
         guard let destinationURL = planner.destinationURL(
             filename: file.filename,
             mediaKind: destinationMediaKind,
@@ -210,7 +278,7 @@ public struct ImportPlanBuilder: Sendable {
                     error: "no_destination"
                 ),
                 willCopy: false,
-                status: "No destination",
+                disposition: .noDestination,
                 destinationPath: nil
             )
         }
@@ -233,7 +301,7 @@ public struct ImportPlanBuilder: Sendable {
                     error: reason
                 ),
                 willCopy: false,
-                status: "Already exists",
+                disposition: .alreadyExists,
                 destinationPath: destinationURL.path
             )
         case .copy(let resolvedURL):
@@ -243,7 +311,18 @@ public struct ImportPlanBuilder: Sendable {
             )
             let resolvedURL = batchResolution.url
             let isConflict = resolvedURL != destinationURL
-            let copyStatus = isFootageSidecar ? "Sidecar" : "Will copy"
+            let disposition: ImportPlanDisposition
+            if isConflict {
+                disposition = .rename(
+                    originalPath: destinationURL.path,
+                    destinationPath: resolvedURL.path,
+                    reason: batchResolution.reason ?? "destination file exists with different content"
+                )
+            } else if isFootageSupportFile {
+                disposition = .supportFile
+            } else {
+                disposition = .copy
+            }
             return ImportFilePlan(
                 update: JobFilePlanUpdate(
                     id: id,
@@ -254,7 +333,7 @@ public struct ImportPlanBuilder: Sendable {
                     error: batchResolution.reason ?? (isConflict ? "destination file exists with different content" : nil)
                 ),
                 willCopy: true,
-                status: isConflict ? "Rename" : copyStatus,
+                disposition: disposition,
                 destinationPath: resolvedURL.path
             )
         }

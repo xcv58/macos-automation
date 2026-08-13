@@ -192,14 +192,13 @@ private struct AppCardSurfaceModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         let shape = RoundedRectangle(cornerRadius: cornerRadius)
-        let fillOpacity = colorScheme == .dark ? 0.055 : 0.024
+        let fillOpacity = colorScheme == .dark ? 0.09 : 0.035
+        let strokeOpacity = colorSchemeContrast == .increased ? 0.9 : 0.34
 
         content
             .background(Color.primary.opacity(fillOpacity), in: shape)
             .overlay {
-                if colorSchemeContrast == .increased {
-                    shape.stroke(AppSurfacePalette.separator, lineWidth: 1)
-                }
+                shape.stroke(AppSurfacePalette.separator.opacity(strokeOpacity), lineWidth: 1)
             }
     }
 }

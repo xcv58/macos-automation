@@ -58,7 +58,7 @@ struct RootView: View {
             !model.hasCompletedOnboarding
         } set: { isPresented in
             if !isPresented, !model.hasCompletedOnboarding {
-                model.completeOnboarding()
+                model.skipOnboardingSetup()
             }
         }
     }

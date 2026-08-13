@@ -5,6 +5,71 @@ import Testing
 
 @Suite("ImportPlanBuilder")
 struct ImportPlanBuilderTests {
+    @Test("typed dispositions define stable labels and attention levels")
+    func typedDispositionPresentation() {
+        #expect(ImportPlanDisposition.copy.title == "Will copy")
+        #expect(ImportPlanDisposition.copy.attention == .normal)
+        #expect(ImportPlanDisposition.known(.localLedger).attention == .informational)
+        #expect(ImportPlanDisposition.known(.portableLedger).title == "Other Mac")
+        #expect(ImportPlanDisposition.known(.portableLedger).attention == .attention)
+        #expect(ImportPlanDisposition.noDestination.attention == .blocking)
+        #expect(
+            ImportPlanDisposition.rename(
+                originalPath: "/a.mov",
+                destinationPath: "/a-copy-1.mov",
+                reason: "exists"
+            ).attention == .attention
+        )
+    }
+
+    @Test("mixed visual groups report both copied and skipped members")
+    func mixedVisualGroupStatus() {
+        let summary = ImportPreviewGroupDispositionSummary(copyCount: 1, skippedCount: 1)
+
+        #expect(summary.mixedStatusTitle == "1 copy · 1 skipped")
+        #expect(
+            ImportPreviewGroupDispositionSummary(copyCount: 2, skippedCount: 0)
+                .mixedStatusTitle == nil
+        )
+    }
+
+    @Test("receipt totals include skipped and failed job files")
+    func receiptTotalsUseFinalJobFileStatuses() {
+        let files = [
+            jobFile(
+                id: 1,
+                filename: "COPIED.JPG",
+                relativePath: "COPIED.JPG",
+                mediaKind: .photo,
+                captureDate: "2026-05-06",
+                copyStatus: .copied
+            ),
+            jobFile(
+                id: 2,
+                filename: "SKIPPED.JPG",
+                relativePath: "SKIPPED.JPG",
+                mediaKind: .photo,
+                captureDate: "2026-05-06",
+                copyStatus: .skipped
+            ),
+            jobFile(
+                id: 3,
+                filename: "FAILED.JPG",
+                relativePath: "FAILED.JPG",
+                mediaKind: .photo,
+                captureDate: "2026-05-06",
+                copyStatus: .failed
+            )
+        ]
+
+        let totals = ImportReceiptTotals(files: files)
+
+        #expect(totals.copiedFiles == 1)
+        #expect(totals.copiedBytes == 1024)
+        #expect(totals.skippedFiles == 1)
+        #expect(totals.failedFiles == 1)
+    }
+
     @Test("copied files are not rewritten during replanning")
     func copiedFilesDoNotProducePlanUpdates() {
         let originalDestination = "/Original/Photos/IMG_0001.JPG"
@@ -139,6 +204,15 @@ struct ImportPlanBuilderTests {
             "/Footage/2026-05-02 to 2026-05-03 Race Weekend/C0001-copy-1.MP4"
         ])
         #expect(plans[1].status == "Rename")
+        #expect(
+            plans[1].disposition
+                == .rename(
+                    originalPath: "/Footage/2026-05-02 to 2026-05-03 Race Weekend/C0001.MP4",
+                    destinationPath: "/Footage/2026-05-02 to 2026-05-03 Race Weekend/C0001-copy-1.MP4",
+                    reason: "destination file name repeats in this import"
+                )
+        )
+        #expect(plans[1].disposition.attention == .attention)
         #expect(plans[1].update?.error == "destination file name repeats in this import")
     }
 
@@ -298,8 +372,63 @@ struct ImportPlanBuilderTests {
         #expect(defaultPlan.willCopy == false)
         #expect(defaultPlan.status == "Unsupported")
         #expect(optInPlan.willCopy)
-        #expect(optInPlan.status == "Sidecar")
+        #expect(optInPlan.disposition == .supportFile)
+        #expect(optInPlan.status == "Support file")
         #expect(optInPlan.destinationPath == "/Footage/2026-05-06 Singapore Trip/C0001.JPG")
+    }
+
+    @Test("date customization cannot re-enable globally excluded photos")
+    func globalVideoSelectionOverridesDatePhotoSelection() {
+        let file = jobFile(
+            id: 1,
+            filename: "IMG_0100.ARW",
+            relativePath: "DCIM/100/IMG_0100.ARW",
+            mediaKind: .photo,
+            captureDate: "2026-05-06"
+        )
+        let builder = ImportPlanBuilder(
+            sessions: [session(date: "2026-05-06", photoCount: 1, videoCount: 0)],
+            mediaSelection: .videosOnly,
+            organizationPreset: .classicDatedFolders,
+            roots: DestinationRoots(
+                photosURL: URL(fileURLWithPath: "/Library", isDirectory: true),
+                videosURL: URL(fileURLWithPath: "/Footage", isDirectory: true)
+            ),
+            fallbackLocation: "Singapore Trip",
+            volumeName: "CARD"
+        )
+
+        let plan = builder.plan(file: file)
+
+        #expect(plan.willCopy == false)
+        #expect(plan.disposition == .excluded)
+    }
+
+    @Test("date customization cannot re-enable globally excluded videos")
+    func globalPhotoSelectionOverridesDateVideoSelection() {
+        let file = jobFile(
+            id: 1,
+            filename: "C0001.MP4",
+            relativePath: "PRIVATE/M4ROOT/CLIP/C0001.MP4",
+            mediaKind: .video,
+            captureDate: "2026-05-06"
+        )
+        let builder = ImportPlanBuilder(
+            sessions: [session(date: "2026-05-06", photoCount: 0, videoCount: 1)],
+            mediaSelection: .photosOnly,
+            organizationPreset: .classicDatedFolders,
+            roots: DestinationRoots(
+                photosURL: URL(fileURLWithPath: "/Library", isDirectory: true),
+                videosURL: URL(fileURLWithPath: "/Footage", isDirectory: true)
+            ),
+            fallbackLocation: "Singapore Trip",
+            volumeName: "CARD"
+        )
+
+        let plan = builder.plan(file: file)
+
+        #expect(plan.willCopy == false)
+        #expect(plan.disposition == .excluded)
     }
 
     private func session(
@@ -327,7 +456,8 @@ struct ImportPlanBuilderTests {
         filename: String,
         relativePath: String,
         mediaKind: MediaKind,
-        captureDate: String
+        captureDate: String,
+        copyStatus: CopyStatus = .pending
     ) -> JobFileRecord {
         JobFileRecord(
             id: id,
@@ -344,7 +474,7 @@ struct ImportPlanBuilderTests {
             decision: .new,
             destinationDirectory: nil,
             plannedDestinationPath: nil,
-            copyStatus: .pending
+            copyStatus: copyStatus
         )
     }
 }

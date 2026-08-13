@@ -45,9 +45,9 @@ struct OnboardingFlowView: View {
                     text: "Files already imported are shown as known or skipped so reinserting a card does not duplicate originals."
                 )
                 OnboardingGuideItem(
-                    title: "Sidecars",
+                    title: "Support files",
                     systemImage: "paperclip",
-                    text: "Camera support files stay skipped for photo imports, and can be kept for footage backups when needed."
+                    text: "Camera support files stay skipped for photo imports and can be kept for footage backups when needed."
                 )
             }
 
@@ -56,38 +56,41 @@ struct OnboardingFlowView: View {
                     title: "Card or source",
                     path: $model.cardPath,
                     validation: model.sourceValidation,
-                    action: model.chooseCardFolder
+                    action: model.chooseOnboardingCardFolder
                 )
                 OnboardingFolderRow(
                     title: "Photos",
                     path: $model.photosPath,
                     validation: model.photosValidation,
                     isRequired: false,
-                    action: model.choosePhotosFolder
+                    action: model.chooseOnboardingPhotosFolder
                 )
                 OnboardingFolderRow(
                     title: "Videos",
                     path: $model.videosPath,
                     validation: model.videosValidation,
                     isRequired: false,
-                    action: model.chooseVideosFolder
+                    action: model.chooseOnboardingVideosFolder
                 )
                 TextField("Shoot name", text: $model.location)
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 260)
+                Text("Used in destination folder names, for example “Taiwan” or “Client Event”.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
 
                 Toggle("Prompt on card mount", isOn: $model.autoPromptEnabled)
             }
 
             HStack {
-                Button("Set Up Later") {
-                    model.completeOnboarding()
+                Button("Use Defaults") {
+                    model.skipOnboardingSetup()
                 }
 
                 Spacer()
 
                 Button {
-                    model.completeOnboarding()
+                    model.saveOnboardingSetup()
                 } label: {
                     Text("Save and Continue")
                 }

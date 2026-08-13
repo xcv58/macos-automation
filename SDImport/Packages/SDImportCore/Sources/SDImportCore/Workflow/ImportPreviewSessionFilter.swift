@@ -83,7 +83,7 @@ public struct ImportPreviewSessionFilter: Sendable {
             return true
         }
 
-        guard plan.status == "Excluded" else {
+        guard plan.disposition == .excluded else {
             return false
         }
 

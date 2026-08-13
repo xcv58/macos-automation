@@ -70,7 +70,7 @@ struct ImportPreviewSessionFilterTests {
             organizationPreset: .shootSessionsByDate
         )
 
-        #expect(plans.first?.status == "Excluded")
+        #expect(plans.first?.disposition == .excluded)
         #expect(visibleSessions.map(\.date) == ["2026-05-10"])
         #expect(visibleSessions.first?.photoCount == 1)
     }
@@ -99,7 +99,7 @@ struct ImportPreviewSessionFilterTests {
             organizationPreset: .shootSessionsByDate
         )
 
-        #expect(plans.first?.status == "Excluded")
+        #expect(plans.first?.disposition == .excluded)
         #expect(visibleSessions.isEmpty)
     }
 

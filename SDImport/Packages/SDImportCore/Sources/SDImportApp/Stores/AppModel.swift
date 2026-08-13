@@ -8,13 +8,22 @@ private let diagnosticsLogger = Logger(subsystem: "com.xcv58.SDImport", category
 
 typealias ImportPreviewSession = ImportPlanSession
 
+enum ImportPreviewGroupKind: Hashable {
+    case rawJPEG
+    case videoSidecars
+}
+
 struct ImportPreviewRow: Identifiable, Hashable {
     let id: Int64
     let filename: String
     let date: String
+    let modificationDateString: String
     let mediaKind: MediaKind
     let sourcePath: String
     let destinationPath: String?
+    let disposition: ImportPlanDisposition
+    let visualGroupID: String?
+    let visualGroupKind: ImportPreviewGroupKind?
     let status: String
     let willCopy: Bool
     let size: Int64
@@ -29,9 +38,17 @@ struct ImportPreviewTotals: Hashable {
 }
 
 struct ImportPreviewDestination: Identifiable, Hashable {
+    enum Root: Hashable {
+        case library
+        case photos
+        case videos
+        case other
+    }
+
     var id: String { path }
     let path: String
-    let title: String
+    let root: Root
+    let relativePath: String
     let fileCount: Int
     let byteCount: Int64
 }
@@ -41,11 +58,18 @@ struct ImportPreviewSpaceRequirement: Identifiable, Hashable {
     let volumeID: String
     let displayPath: String
     let requiredBytes: Int64
-    let availableBytes: Int64
+    let availableBytes: Int64?
     let totalBytes: Int64?
 
+    var isKnown: Bool {
+        availableBytes != nil
+    }
+
     var isSatisfied: Bool {
-        requiredBytes <= availableBytes
+        guard let availableBytes else {
+            return false
+        }
+        return requiredBytes <= availableBytes
     }
 }
 
@@ -57,6 +81,13 @@ private struct SourceEjectionTarget: Sendable {
     var volumeCount: Int {
         volumes.count
     }
+}
+
+private enum ImportRetryContext {
+    case currentReview
+    case existingJob(jobID: String)
+    case portableReceiptOverride
+    case eject(jobID: String, target: SourceEjectionTarget)
 }
 
 private struct SourceDeviceEjectionError: LocalizedError {
@@ -139,6 +170,9 @@ struct SettingsFeedback: Equatable {
 @MainActor
 final class AppModel: ObservableObject {
     @Published var selection: SidebarItem = .import
+    @Published private(set) var importUIPhase: ImportUIPhase = .source
+    @Published private(set) var activeImportOperation: ImportOperationKind?
+    @Published private(set) var importFailure: ImportFailureState?
     @Published var cardPath: String
     @Published var photosPath: String
     @Published var videosPath: String
@@ -163,6 +197,7 @@ final class AppModel: ObservableObject {
     @Published var organizationPreset: ImportOrganizationPreset
     @Published var destinationLayout: ImportDestinationLayout
     @Published var folderGrouping: ImportFolderGrouping
+    @Published var importDefaults: ImportDefaults
     @Published var themePreference: AppThemePreference
     @Published var mediaContentProfile: MediaContentProfile?
     @Published var photoPairSummary: PhotoPairSummary?
@@ -200,6 +235,8 @@ final class AppModel: ObservableObject {
     @Published var sourceValidation: PathValidationResult = .empty(purpose: .source)
     @Published var photosValidation: PathValidationResult = .empty(purpose: .destination)
     @Published var videosValidation: PathValidationResult = .empty(purpose: .destination)
+    @Published var defaultPhotosValidation: PathValidationResult = .empty(purpose: .destination)
+    @Published var defaultVideosValidation: PathValidationResult = .empty(purpose: .destination)
     @Published var pendingMountedVolume: MountedVolume? {
         didSet {
             if oldValue != nil, pendingMountedVolume == nil {
@@ -217,13 +254,20 @@ final class AppModel: ObservableObject {
             }
         }
     }
-    @Published private(set) var isEjectingSource = false
+    @Published private(set) var isEjectingSource = false {
+        didSet {
+            if oldValue, !isEjectingSource {
+                schedulePendingMountHandoffRetry()
+            }
+        }
+    }
     @Published private(set) var ejectedSourceJobID: String?
     @Published private(set) var ejectedSourceName: String?
     @Published private(set) var ejectedSourceVolumeCount = 0
     @Published var setupError: String?
 
     private let defaults = UserDefaults.standard
+    private var initialOnboardingSourcePath: String
     private var applicationSupportURL: URL?
     private var reportsURL: URL?
     private var databaseURL: URL?
@@ -245,6 +289,8 @@ final class AppModel: ObservableObject {
     private var cachedResultSourceEjectionTargets: [String: SourceEjectionTarget] = [:]
     private var mountObserver: MountEventObserver?
     private var pendingMountHandoffRetryTask: Task<Void, Never>?
+    private var activeImportRetryContext: ImportRetryContext?
+    private var failedImportRetryContext: ImportRetryContext?
     private var workflowProfilesByVolume: [String: ImportWorkflowProfile] = [:]
     private var preferredMixedDestinationLayout: ImportDestinationLayout = .singleLibrary
     private var hiddenRecentPaths: Set<String> = []
@@ -258,20 +304,14 @@ final class AppModel: ObservableObject {
 
     init() {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
-        self.cardPath = defaults.string(forKey: DefaultsKeys.cardPath) ?? "/Volumes"
-        self.photosPath = defaults.string(forKey: DefaultsKeys.photosPath) ?? "\(home)/Pictures/Photos"
-        self.videosPath = defaults.string(forKey: DefaultsKeys.videosPath) ?? "\(home)/Downloads"
-        self.location = defaults.string(forKey: DefaultsKeys.location) ?? "Untitled"
-        self.historyRetention = .defaultPolicy
-        self.autoPromptEnabled = defaults.bool(forKey: DefaultsKeys.autoPromptEnabled)
-        self.ejectAfterSuccessfulImport = defaults.bool(forKey: DefaultsKeys.ejectAfterSuccessfulImport)
-        self.portableImportReceiptsEnabled = defaults.bool(forKey: DefaultsKeys.portableImportReceiptsEnabled)
-        self.hasCompletedOnboarding = defaults.bool(forKey: DefaultsKeys.hasCompletedOnboarding)
+        let storedSourcePath = defaults.string(forKey: DefaultsKeys.cardPath) ?? "/Volumes"
+        let storedPhotosPath = defaults.string(forKey: DefaultsKeys.photosPath) ?? "\(home)/Pictures/Photos"
+        let storedVideosPath = defaults.string(forKey: DefaultsKeys.videosPath) ?? "\(home)/Downloads"
+        let storedShootName = defaults.string(forKey: DefaultsKeys.location) ?? "Untitled"
         let storedWorkflowProfile = ImportWorkflowProfile(
             rawValue: defaults.string(forKey: DefaultsKeys.workflowProfile) ?? ""
         ) ?? .mixedShootSession
-        self.workflowProfile = storedWorkflowProfile
-        self.importMediaSelection = ImportMediaSelection(
+        let storedMediaSelection = ImportMediaSelection(
             rawValue: defaults.string(forKey: DefaultsKeys.importMediaSelection) ?? ""
         ) ?? storedWorkflowProfile.mediaSelection
         let storedOrganizationPreset = ImportOrganizationPreset(
@@ -283,14 +323,38 @@ final class AppModel: ObservableObject {
         let storedPreferredMixedDestinationLayout = ImportDestinationLayout(
             rawValue: defaults.string(forKey: DefaultsKeys.preferredMixedDestinationLayout) ?? ""
         ) ?? (storedDestinationLayout == .footageBackup ? .singleLibrary : storedDestinationLayout)
+        let storedFolderGrouping = ImportFolderGrouping(
+            rawValue: defaults.string(forKey: DefaultsKeys.folderGrouping) ?? ""
+        ) ?? .byDay
+
+        self.initialOnboardingSourcePath = storedSourcePath
+        self.cardPath = storedSourcePath
+        self.photosPath = storedPhotosPath
+        self.videosPath = storedVideosPath
+        self.location = storedShootName
+        self.historyRetention = .defaultPolicy
+        self.autoPromptEnabled = defaults.bool(forKey: DefaultsKeys.autoPromptEnabled)
+        self.ejectAfterSuccessfulImport = defaults.bool(forKey: DefaultsKeys.ejectAfterSuccessfulImport)
+        self.portableImportReceiptsEnabled = defaults.bool(forKey: DefaultsKeys.portableImportReceiptsEnabled)
+        self.hasCompletedOnboarding = defaults.bool(forKey: DefaultsKeys.hasCompletedOnboarding)
+        self.workflowProfile = storedWorkflowProfile
+        self.importMediaSelection = storedMediaSelection
         self.destinationLayout = storedDestinationLayout
         self.organizationPreset = storedDestinationLayout.organizationPreset
         self.preferredMixedDestinationLayout = storedPreferredMixedDestinationLayout == .footageBackup
             ? .singleLibrary
             : storedPreferredMixedDestinationLayout
-        self.folderGrouping = ImportFolderGrouping(
-            rawValue: defaults.string(forKey: DefaultsKeys.folderGrouping) ?? ""
-        ) ?? .byDay
+        self.folderGrouping = storedFolderGrouping
+        self.importDefaults = ImportDefaults(
+            photosPath: storedPhotosPath,
+            videosPath: storedVideosPath,
+            shootName: storedShootName,
+            workflowProfile: storedWorkflowProfile,
+            mediaSelection: storedMediaSelection,
+            destinationLayout: storedDestinationLayout,
+            preferredMixedDestinationLayout: storedPreferredMixedDestinationLayout,
+            folderGrouping: storedFolderGrouping
+        )
         self.themePreference = AppThemePreference(
             rawValue: defaults.string(forKey: DefaultsKeys.themePreference) ?? ""
         ) ?? .system
@@ -340,6 +404,7 @@ final class AppModel: ObservableObject {
                 .recoverInterruptedImports()
             refreshAvailableSourceVolumes()
             validatePaths()
+            validateDefaultPaths()
             refreshHistory()
             LoginItemController.invalidateApplicationOwnershipCache()
             refreshBackgroundPromptHealth()
@@ -366,24 +431,6 @@ final class AppModel: ObservableObject {
         persistAutoPromptPreference: Bool = false
     ) -> Bool {
         settingsFeedback = nil
-        defaults.set(cardPath, forKey: DefaultsKeys.cardPath)
-        defaults.set(photosPath, forKey: DefaultsKeys.photosPath)
-        defaults.set(videosPath, forKey: DefaultsKeys.videosPath)
-        defaults.set(location, forKey: DefaultsKeys.location)
-        if persistAutoPromptPreference {
-            defaults.set(autoPromptEnabled, forKey: DefaultsKeys.autoPromptEnabled)
-        }
-        defaults.set(ejectAfterSuccessfulImport, forKey: DefaultsKeys.ejectAfterSuccessfulImport)
-        defaults.set(portableImportReceiptsEnabled, forKey: DefaultsKeys.portableImportReceiptsEnabled)
-        defaults.set(hasCompletedOnboarding, forKey: DefaultsKeys.hasCompletedOnboarding)
-        defaults.set(workflowProfile.rawValue, forKey: DefaultsKeys.workflowProfile)
-        defaults.set(importMediaSelection.rawValue, forKey: DefaultsKeys.importMediaSelection)
-        defaults.set(organizationPreset.rawValue, forKey: DefaultsKeys.organizationPreset)
-        defaults.set(destinationLayout.rawValue, forKey: DefaultsKeys.destinationLayout)
-        defaults.set(preferredMixedDestinationLayout.rawValue, forKey: DefaultsKeys.preferredMixedDestinationLayout)
-        defaults.set(folderGrouping.rawValue, forKey: DefaultsKeys.folderGrouping)
-        defaults.set(themePreference.rawValue, forKey: DefaultsKeys.themePreference)
-
         do {
             if persistAutoPromptPreference {
                 try settingsRepository?.saveConfiguration(currentConfiguration())
@@ -398,18 +445,36 @@ final class AppModel: ObservableObject {
             return false
         }
 
+        defaults.set(cardPath, forKey: DefaultsKeys.cardPath)
+        defaults.set(importDefaults.photosPath, forKey: DefaultsKeys.photosPath)
+        defaults.set(importDefaults.videosPath, forKey: DefaultsKeys.videosPath)
+        defaults.set(importDefaults.shootName, forKey: DefaultsKeys.location)
+        if persistAutoPromptPreference {
+            defaults.set(autoPromptEnabled, forKey: DefaultsKeys.autoPromptEnabled)
+        }
+        defaults.set(ejectAfterSuccessfulImport, forKey: DefaultsKeys.ejectAfterSuccessfulImport)
+        defaults.set(portableImportReceiptsEnabled, forKey: DefaultsKeys.portableImportReceiptsEnabled)
+        defaults.set(hasCompletedOnboarding, forKey: DefaultsKeys.hasCompletedOnboarding)
+        defaults.set(importDefaults.workflowProfile.rawValue, forKey: DefaultsKeys.workflowProfile)
+        defaults.set(importDefaults.mediaSelection.rawValue, forKey: DefaultsKeys.importMediaSelection)
+        defaults.set(importDefaults.destinationLayout.organizationPreset.rawValue, forKey: DefaultsKeys.organizationPreset)
+        defaults.set(importDefaults.destinationLayout.rawValue, forKey: DefaultsKeys.destinationLayout)
+        defaults.set(importDefaults.preferredMixedDestinationLayout.rawValue, forKey: DefaultsKeys.preferredMixedDestinationLayout)
+        defaults.set(importDefaults.folderGrouping.rawValue, forKey: DefaultsKeys.folderGrouping)
+        defaults.set(themePreference.rawValue, forKey: DefaultsKeys.themePreference)
+
         guard refreshFolderBookmarks else {
             return true
         }
 
         do {
             try saveFolderBookmark(.source, path: cardPath)
-            try saveFolderBookmark(.photos, path: photosPath)
-            try saveFolderBookmark(.videos, path: videosPath)
+            try saveFolderBookmark(.photos, path: importDefaults.photosPath)
+            try saveFolderBookmark(.videos, path: importDefaults.videosPath)
         } catch {
             statusMessage = "Settings saved, but folder access could not be refreshed: \(error)"
             settingsFeedback = SettingsFeedback(message: statusMessage, role: .error)
-            return false
+            return true
         }
         return true
     }
@@ -423,12 +488,41 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func chooseOnboardingCardFolder() {
+        if let path = FilePanelPresenter.chooseDirectory(
+            title: "Choose SD Card or Source Folder",
+            initialPath: cardPath
+        ) {
+            cardPath = path
+            sourcePathDidChange()
+        }
+    }
+
+    func chooseOnboardingPhotosFolder() {
+        if let path = FilePanelPresenter.chooseDirectory(
+            title: "Choose Photo Destination",
+            initialPath: photosPath
+        ) {
+            photosPath = path
+            destinationPathDidChange()
+        }
+    }
+
+    func chooseOnboardingVideosFolder() {
+        if let path = FilePanelPresenter.chooseDirectory(
+            title: "Choose Video Destination",
+            initialPath: videosPath
+        ) {
+            videosPath = path
+            destinationPathDidChange()
+        }
+    }
+
     func choosePhotosFolder() {
         if let path = FilePanelPresenter.chooseDirectory(title: "Choose Photo Destination", initialPath: photosPath) {
             unhideRecentPath(path)
             photosPath = path
             destinationPathDidChange()
-            savePreferences(refreshFolderBookmarks: true)
         }
     }
 
@@ -437,6 +531,27 @@ final class AppModel: ObservableObject {
             unhideRecentPath(path)
             videosPath = path
             destinationPathDidChange()
+        }
+    }
+
+    func chooseDefaultPhotosFolder() {
+        if let path = FilePanelPresenter.chooseDirectory(
+            title: "Choose Default Photo Destination",
+            initialPath: importDefaults.photosPath
+        ) {
+            importDefaults.photosPath = path
+            defaultDestinationPathDidChange()
+            savePreferences(refreshFolderBookmarks: true)
+        }
+    }
+
+    func chooseDefaultVideosFolder() {
+        if let path = FilePanelPresenter.chooseDirectory(
+            title: "Choose Default Video Destination",
+            initialPath: importDefaults.videosPath
+        ) {
+            importDefaults.videosPath = path
+            defaultDestinationPathDidChange()
             savePreferences(refreshFolderBookmarks: true)
         }
     }
@@ -514,14 +629,12 @@ final class AppModel: ObservableObject {
         unhideRecentPath(path)
         photosPath = path
         destinationPathDidChange()
-        savePreferences()
     }
 
     func selectVideosPath(_ path: String) {
         unhideRecentPath(path)
         videosPath = path
         destinationPathDidChange()
-        savePreferences()
     }
 
     var hasForgottenRecentPaths: Bool {
@@ -569,6 +682,9 @@ final class AppModel: ObservableObject {
     }
 
     func sourcePathDidChange() {
+        guard !isWorking, !isEjectingSource else {
+            return
+        }
         currentSummary = nil
         currentResult = nil
         importProgress = nil
@@ -583,6 +699,7 @@ final class AppModel: ObservableObject {
         mediaContentProfile = nil
         photoPairSummary = nil
         workflowProfileWasManuallyChosenForCurrentJob = false
+        transitionImportWorkspace(.recover(hasScannedJob: false))
         validatePaths()
         rebuildSourceEjectionTargetCache()
     }
@@ -590,6 +707,70 @@ final class AppModel: ObservableObject {
     func destinationPathDidChange() {
         validatePaths()
         rebuildPreviewPlanCache()
+    }
+
+    func defaultDestinationPathDidChange() {
+        validateDefaultPaths()
+    }
+
+    var currentImportDraft: ImportDraft {
+        ImportDraft(
+            sourcePath: cardPath,
+            photosPath: photosPath,
+            videosPath: videosPath,
+            shootName: location,
+            workflowProfile: workflowProfile,
+            mediaSelection: importMediaSelection,
+            destinationLayout: destinationLayout,
+            folderGrouping: folderGrouping,
+            sessions: previewSessions
+        )
+    }
+
+    var importDraftUsesDefaults: Bool {
+        photosPath == importDefaults.photosPath
+            && videosPath == importDefaults.videosPath
+            && Self.defaultSessionLabel(for: location) == Self.defaultSessionLabel(for: importDefaults.shootName)
+            && workflowProfile == importDefaults.workflowProfile
+            && importMediaSelection == importDefaults.mediaSelection
+            && destinationLayout == importDefaults.destinationLayout
+            && folderGrouping == importDefaults.folderGrouping
+    }
+
+    func saveImportDraftAsDefaults() {
+        let previousDefaults = importDefaults
+        importDefaults = ImportDefaults(
+            photosPath: photosPath,
+            videosPath: videosPath,
+            shootName: Self.defaultSessionLabel(for: location),
+            workflowProfile: workflowProfile,
+            mediaSelection: importMediaSelection,
+            destinationLayout: destinationLayout,
+            preferredMixedDestinationLayout: preferredMixedDestinationLayout,
+            folderGrouping: folderGrouping
+        )
+        validateDefaultPaths()
+        if savePreferences(refreshFolderBookmarks: true) {
+            if settingsFeedback == nil {
+                statusMessage = "Import settings saved as defaults"
+            }
+        } else {
+            importDefaults = previousDefaults
+            validateDefaultPaths()
+        }
+    }
+
+    func resetImportDraftFromDefaults() {
+        photosPath = importDefaults.photosPath
+        videosPath = importDefaults.videosPath
+        location = importDefaults.shootName
+        workflowProfile = importDefaults.workflowProfile
+        importMediaSelection = importDefaults.mediaSelection
+        destinationLayout = importDefaults.destinationLayout
+        preferredMixedDestinationLayout = importDefaults.preferredMixedDestinationLayout
+        folderGrouping = importDefaults.folderGrouping
+        organizationPreset = destinationLayout.organizationPreset
+        validatePaths()
     }
 
     func validatePaths() {
@@ -600,9 +781,15 @@ final class AppModel: ObservableObject {
         rebuildRecentImportSuggestions()
     }
 
+    func validateDefaultPaths() {
+        let validator = PathValidator()
+        defaultPhotosValidation = validator.validate(path: importDefaults.photosPath, purpose: .destination)
+        defaultVideosValidation = validator.validate(path: importDefaults.videosPath, purpose: .destination)
+    }
+
     func validateAndSaveDestinationSettings() async {
-        let photosPath = self.photosPath
-        let videosPath = self.videosPath
+        let photosPath = importDefaults.photosPath
+        let videosPath = importDefaults.videosPath
         let results = await Task.detached(priority: .userInitiated) {
             let validator = PathValidator()
             return (
@@ -613,32 +800,65 @@ final class AppModel: ObservableObject {
 
         guard
             !Task.isCancelled,
-            photosPath == self.photosPath,
-            videosPath == self.videosPath
+            photosPath == importDefaults.photosPath,
+            videosPath == importDefaults.videosPath
         else {
             return
         }
 
-        photosValidation = results.0
-        videosValidation = results.1
-        rebuildRecentImportSuggestions()
+        defaultPhotosValidation = results.0
+        defaultVideosValidation = results.1
         savePreferences(refreshFolderBookmarks: true)
     }
 
     var canScan: Bool {
-        !isWorking && sourceValidation.isUsable
+        !isWorking && !isEjectingSource && sourceValidation.isUsable
     }
 
     var canImportPlannedFiles: Bool {
         return !isWorking
+            && !isEjectingSource
             && currentSummary != nil
             && previewTotals.copyFiles > 0
             && sourceValidation.isUsable
             && requiredDestinationPathsAreUsable()
+            && previewSpaceRequirements.allSatisfy(\.isSatisfied)
+    }
+
+    var importReadinessMessage: String? {
+        if previewTotals.copyFiles == 0 {
+            return "No files are selected for copying"
+        }
+        if !sourceValidation.isUsable {
+            return sourceValidation.message
+        }
+        if !requiredDestinationPathsAreUsable() {
+            return "Choose usable destination folders"
+        }
+        if let requirement = previewSpaceRequirements.first(where: { !$0.isKnown }) {
+            return "Available space couldn’t be checked for \(requirement.displayPath)"
+        }
+        if let requirement = previewSpaceRequirements.first(where: { !$0.isSatisfied }) {
+            let required = ByteCountFormatter.string(fromByteCount: requirement.requiredBytes, countStyle: .file)
+            let available = ByteCountFormatter.string(
+                fromByteCount: requirement.availableBytes ?? 0,
+                countStyle: .file
+            )
+            return "\(required) required; \(available) available"
+        }
+        return nil
+    }
+
+    var previewAttentionCount: Int {
+        previewRows.filter { $0.disposition.attention >= .attention }.count
+    }
+
+    var previewDestinationIssueCount: Int {
+        previewSpaceRequirements.filter { !$0.isSatisfied }.count
     }
 
     func scan() {
-        guard !isWorking else {
+        guard !isWorking, !isEjectingSource else {
             statusMessage = "Finish the current scan or import first"
             return
         }
@@ -662,6 +882,7 @@ final class AppModel: ObservableObject {
         currentPreviewFiles = []
         clearPreviewPlanCache()
         isWorking = true
+        transitionImportWorkspace(.beginScan)
         statusMessage = "Scanning..."
         importLogger.info("Scan started")
 
@@ -731,6 +952,7 @@ final class AppModel: ObservableObject {
                         self.statusMessage = "Scan complete"
                     }
                     self.isWorking = false
+                    self.transitionImportWorkspace(.scanSucceeded)
                     self.importTask = nil
                 }
                 importLogger.info(
@@ -745,6 +967,7 @@ final class AppModel: ObservableObject {
                     self.clearPreviewPlanCache()
                     self.statusMessage = "Scan cancelled"
                     self.isWorking = false
+                    self.transitionImportWorkspace(.cancelled)
                     self.importTask = nil
                 }
                 importLogger.notice("Scan cancelled")
@@ -757,6 +980,7 @@ final class AppModel: ObservableObject {
                     self.clearPreviewPlanCache()
                     self.statusMessage = "Scan cancelled"
                     self.isWorking = false
+                    self.transitionImportWorkspace(.cancelled)
                     self.importTask = nil
                 }
                 importLogger.notice("Scan cancelled")
@@ -767,8 +991,10 @@ final class AppModel: ObservableObject {
                     self.currentPreviewFiles = []
                     self.knownImportedPreviewFileIDs = []
                     self.clearPreviewPlanCache()
-                    self.statusMessage = "Scan failed: \(error)"
+                    let message = "Scan failed: \(Self.errorMessage(for: error))"
+                    self.statusMessage = message
                     self.isWorking = false
+                    self.transitionImportWorkspace(.failed(operation: .scan, message: message))
                     self.importTask = nil
                 }
                 importLogger.error("Scan failed errorType=\(String(describing: type(of: error)), privacy: .public)")
@@ -817,7 +1043,6 @@ final class AppModel: ObservableObject {
 
     func folderGroupingDidChange() {
         rebuildPreviewPlanCache()
-        savePreferences()
     }
 
     func themePreferenceDidChange() {
@@ -842,7 +1067,6 @@ final class AppModel: ObservableObject {
             workflowProfileWasManuallyChosenForCurrentJob = true
         }
         validatePaths()
-        savePreferences()
     }
 
     private func applyCurrentImportOptions(userInitiated: Bool) {
@@ -860,7 +1084,6 @@ final class AppModel: ObservableObject {
             workflowProfileWasManuallyChosenForCurrentJob = true
         }
         validatePaths()
-        savePreferences()
     }
 
     private func normalizeDestinationForCurrentImportType() {
@@ -943,6 +1166,7 @@ final class AppModel: ObservableObject {
 
         let builder = ImportPlanBuilder(
             sessions: sessions,
+            mediaSelection: importMediaSelection,
             organizationPreset: organizationPreset,
             folderGrouping: folderGrouping,
             roots: DestinationRoots(
@@ -965,7 +1189,24 @@ final class AppModel: ObservableObject {
         files: [JobFileRecord],
         plans: [ImportFilePlan]
     ) -> [ImportPreviewRow] {
-        zip(files, plans).compactMap { file, plan in
+        var visualGroups: [Int64: (id: String, kind: ImportPreviewGroupKind)] = [:]
+        for group in PhotoPairDetector().groups(files: files) where group.isPair {
+            for file in group.rawFiles + group.jpegFiles {
+                if let id = file.id {
+                    visualGroups[id] = (group.id, .rawJPEG)
+                }
+            }
+        }
+        for group in SidecarAssociator().associate(files: files).groups {
+            for file in [group.video] + group.sidecars {
+                if let id = file.id {
+                    visualGroups[id] = (group.id, .videoSidecars)
+                }
+            }
+        }
+
+        return zip(files, plans).compactMap { pair -> ImportPreviewRow? in
+            let (file, plan) = pair
             guard let id = file.id else {
                 return nil
             }
@@ -973,9 +1214,13 @@ final class AppModel: ObservableObject {
                 id: id,
                 filename: file.filename,
                 date: ImportPlanBuilder.sessionDate(for: file),
+                modificationDateString: file.modificationDateString,
                 mediaKind: file.mediaKind,
-                sourcePath: file.relativePath ?? file.sourcePath,
+                sourcePath: file.sourcePath,
                 destinationPath: plan.destinationPath,
+                disposition: plan.disposition,
+                visualGroupID: visualGroups[id]?.id,
+                visualGroupKind: visualGroups[id]?.kind,
                 status: plan.status,
                 willCopy: plan.willCopy,
                 size: file.size
@@ -1025,9 +1270,11 @@ final class AppModel: ObservableObject {
 
         return grouped
             .map { path, rows in
-                ImportPreviewDestination(
+                let rootAndRelativePath = previewDestinationRoot(for: path, rows: rows)
+                return ImportPreviewDestination(
                     path: path,
-                    title: URL(fileURLWithPath: path, isDirectory: true).lastPathComponent,
+                    root: rootAndRelativePath.root,
+                    relativePath: rootAndRelativePath.relativePath,
                     fileCount: rows.count,
                     byteCount: rows.reduce(Int64(0)) { $0 + $1.size }
                 )
@@ -1035,8 +1282,56 @@ final class AppModel: ObservableObject {
             .sorted { $0.path.localizedStandardCompare($1.path) == .orderedAscending }
     }
 
+    private func previewDestinationRoot(
+        for destinationPath: String,
+        rows: [ImportPreviewRow]
+    ) -> (root: ImportPreviewDestination.Root, relativePath: String) {
+        let destination = URL(fileURLWithPath: destinationPath, isDirectory: true).standardizedFileURL
+        let photosRoot = URL(
+            fileURLWithPath: resolvedPath(photosPath, validation: photosValidation),
+            isDirectory: true
+        ).standardizedFileURL
+        let videosRoot = URL(
+            fileURLWithPath: resolvedPath(videosPath, validation: videosValidation),
+            isDirectory: true
+        ).standardizedFileURL
+
+        if destinationLayout == .singleLibrary, isDescendant(destination, of: photosRoot) {
+            return (.library, relativePath(from: photosRoot, to: destination))
+        }
+        if photosRoot == videosRoot, isDescendant(destination, of: photosRoot) {
+            let containsFootage = rows.contains {
+                $0.mediaKind == .video || $0.visualGroupKind == .videoSidecars
+            }
+            return (
+                containsFootage ? .videos : .photos,
+                relativePath(from: photosRoot, to: destination)
+            )
+        }
+        if isDescendant(destination, of: photosRoot) {
+            return (.photos, relativePath(from: photosRoot, to: destination))
+        }
+        if isDescendant(destination, of: videosRoot) {
+            return (.videos, relativePath(from: videosRoot, to: destination))
+        }
+        return (.other, destination.path)
+    }
+
+    private func isDescendant(_ destination: URL, of root: URL) -> Bool {
+        let rootComponents = root.pathComponents
+        let destinationComponents = destination.pathComponents
+        return destinationComponents.count >= rootComponents.count
+            && Array(destinationComponents.prefix(rootComponents.count)) == rootComponents
+    }
+
+    private func relativePath(from root: URL, to destination: URL) -> String {
+        let components = destination.pathComponents.dropFirst(root.pathComponents.count)
+        return components.joined(separator: "/")
+    }
+
     private func buildPreviewSpaceRequirements(rows: [ImportPreviewRow]) -> [ImportPreviewSpaceRequirement] {
         var grouped: [String: (capacity: VolumeCapacity, requiredBytes: Int64)] = [:]
+        var unknownRequirements: [ImportPreviewSpaceRequirement] = []
         let rowsNeedingSpace = rows.filter { row in
             row.willCopy
                 && row.size > 0
@@ -1052,19 +1347,40 @@ final class AppModel: ObservableObject {
             guard let destinationDirectory else {
                 continue
             }
-            guard let capacity = try? DestinationSpaceChecker.fileSystemCapacity(for: destinationDirectory) else {
-                continue
-            }
             let requiredBytes = directoryRows.reduce(Int64(0)) { $0 + $1.size }
+            do {
+                guard let capacity = try DestinationSpaceChecker.fileSystemCapacity(for: destinationDirectory) else {
+                    unknownRequirements.append(
+                        ImportPreviewSpaceRequirement(
+                            volumeID: "unknown:\(destinationDirectory)",
+                            displayPath: destinationDirectory,
+                            requiredBytes: requiredBytes,
+                            availableBytes: nil,
+                            totalBytes: nil
+                        )
+                    )
+                    continue
+                }
 
-            let existing = grouped[capacity.volumeID]
-            grouped[capacity.volumeID] = (
-                capacity: existing?.capacity ?? capacity,
-                requiredBytes: (existing?.requiredBytes ?? 0) + requiredBytes
-            )
+                let existing = grouped[capacity.volumeID]
+                grouped[capacity.volumeID] = (
+                    capacity: existing?.capacity ?? capacity,
+                    requiredBytes: (existing?.requiredBytes ?? 0) + requiredBytes
+                )
+            } catch {
+                unknownRequirements.append(
+                    ImportPreviewSpaceRequirement(
+                        volumeID: "unknown:\(destinationDirectory)",
+                        displayPath: destinationDirectory,
+                        requiredBytes: requiredBytes,
+                        availableBytes: nil,
+                        totalBytes: nil
+                    )
+                )
+            }
         }
 
-        return grouped.values
+        let knownRequirements = grouped.values
             .map { item in
                 ImportPreviewSpaceRequirement(
                     volumeID: item.capacity.volumeID,
@@ -1074,6 +1390,7 @@ final class AppModel: ObservableObject {
                     totalBytes: item.capacity.totalBytes
                 )
             }
+        return (knownRequirements + unknownRequirements)
             .sorted { $0.displayPath.localizedStandardCompare($1.displayPath) == .orderedAscending }
     }
 
@@ -1082,7 +1399,7 @@ final class AppModel: ObservableObject {
     }
 
     func importCurrentJob() {
-        guard !isWorking else {
+        guard !isWorking, !isEjectingSource else {
             statusMessage = "Finish the current scan or import first"
             return
         }
@@ -1112,7 +1429,9 @@ final class AppModel: ObservableObject {
             rebuildPreviewPlanCache()
         }
         if let failure = previewSpaceRequirements.first(where: { !$0.isSatisfied }) {
-            statusMessage = "Not enough space in \(failure.displayPath)"
+            statusMessage = failure.isKnown
+                ? "Not enough space in \(failure.displayPath)"
+                : "Could not check available space in \(failure.displayPath)"
             return
         }
 
@@ -1131,18 +1450,20 @@ final class AppModel: ObservableObject {
         )
         let fallbackLocation = Self.defaultSessionLabel(for: location)
         let volumeName = currentSummary.volumeName
+        let mediaSelection = importMediaSelection
         let portableImportReceiptsEnabled = portableImportReceiptsEnabled
 
-        rememberWorkflowPreferenceForCurrentVolume()
         savePreferences()
 
         startImport(
             jobID: jobID,
             databaseURL: databaseURL,
             portableImportReceiptsEnabled: portableImportReceiptsEnabled,
+            retryContext: .currentReview,
             planMode: .rebuild(
                 ImportPlanBuilder(
                     sessions: sessions,
+                    mediaSelection: mediaSelection,
                     organizationPreset: organizationPreset,
                     folderGrouping: folderGrouping,
                     roots: roots,
@@ -1154,7 +1475,7 @@ final class AppModel: ObservableObject {
     }
 
     func importPortableKnownFilesAnyway() {
-        guard !isWorking else {
+        guard !isWorking, !isEjectingSource else {
             statusMessage = "Finish the current scan or import first"
             return
         }
@@ -1163,7 +1484,14 @@ final class AppModel: ObservableObject {
             return
         }
 
-        let portableOverrideIDs = Set(previewRows.filter { $0.status == "Other Mac" }.map(\.id))
+        let portableOverrideIDs = Set(
+            previewRows.compactMap { row in
+                if case .known(.portableLedger) = row.disposition {
+                    return row.id
+                }
+                return nil
+            }
+        )
         let updates = currentPreviewFiles.compactMap { file -> JobFilePlanUpdate? in
             guard
                 file.knownSource == .portableLedger,
@@ -1187,6 +1515,9 @@ final class AppModel: ObservableObject {
         }
 
         isWorking = true
+        activeImportRetryContext = .portableReceiptOverride
+        failedImportRetryContext = nil
+        transitionImportWorkspace(.beginPreparation(.portableReceiptOverride))
         statusMessage = "Preparing files imported on another Mac..."
         importTask = Task.detached(priority: .userInitiated) {
             do {
@@ -1202,6 +1533,8 @@ final class AppModel: ObservableObject {
                 await MainActor.run {
                     guard !Task.isCancelled else {
                         self.isWorking = false
+                        self.activeImportRetryContext = nil
+                        self.transitionImportWorkspace(.cancelled)
                         self.importTask = nil
                         return
                     }
@@ -1211,17 +1544,27 @@ final class AppModel: ObservableObject {
                     self.rebuildPreviewPlanCache()
                     self.statusMessage = "Portable receipt overridden for \(updates.count) files"
                     self.isWorking = false
+                    self.activeImportRetryContext = nil
+                    self.transitionImportWorkspace(.scanSucceeded)
                     self.importTask = nil
                 }
             } catch is CancellationError {
                 await MainActor.run {
                     self.isWorking = false
+                    self.activeImportRetryContext = nil
+                    self.transitionImportWorkspace(.cancelled)
                     self.importTask = nil
                 }
             } catch {
                 await MainActor.run {
-                    self.statusMessage = "Could not override portable history: \(error)"
+                    let message = "Could not override portable history: \(Self.errorMessage(for: error))"
+                    self.statusMessage = message
                     self.isWorking = false
+                    self.failedImportRetryContext = self.activeImportRetryContext
+                    self.activeImportRetryContext = nil
+                    self.transitionImportWorkspace(
+                        .failed(operation: .portableReceiptOverride, message: message)
+                    )
                     self.importTask = nil
                 }
             }
@@ -1232,9 +1575,13 @@ final class AppModel: ObservableObject {
         jobID: String,
         databaseURL: URL,
         portableImportReceiptsEnabled: Bool? = nil,
+        retryContext: ImportRetryContext,
         planMode: ImportPlanMode
     ) {
         isWorking = true
+        activeImportRetryContext = retryContext
+        failedImportRetryContext = nil
+        transitionImportWorkspace(.beginPreparation(.prepareImport))
         currentResult = nil
         importProgress = nil
         ejectedSourceJobID = nil
@@ -1265,14 +1612,12 @@ final class AppModel: ObservableObject {
                     dedupeRepository: repositories.dedupeRepository,
                     portableReceiptsEnabled: portableImportReceiptsEnabled
                 )
-                var latestProgress: ImportProgress?
                 var lastPublishedAt = Date(timeIntervalSince1970: 0)
                 let minimumUpdateInterval: TimeInterval = 0.75
 
                 let result = try engine.importFiles(
                     jobID: jobID,
                     onProgress: { progress in
-                        latestProgress = progress
                         if progress.status == "aborted" {
                             return
                         }
@@ -1287,6 +1632,7 @@ final class AppModel: ObservableObject {
                         lastPublishedAt = now
                         Task { @MainActor in
                             self.importProgress = progress
+                            self.transitionImportWorkspace(.beginCopy)
                             self.statusMessage = Self.importStatusMessage(for: progress)
                         }
                     },
@@ -1302,7 +1648,7 @@ final class AppModel: ObservableObject {
                         return
                     }
                     self.currentResult = result
-                    self.importProgress = latestProgress
+                    self.importProgress = nil
                     self.jobs = jobs
                     self.selectedJobID = jobID
                     self.selectedJobFiles = files
@@ -1315,6 +1661,8 @@ final class AppModel: ObservableObject {
                         "Import finished. \($0)"
                     } ?? "Import finished"
                     self.isWorking = false
+                    self.activeImportRetryContext = nil
+                    self.transitionImportWorkspace(.completed)
                     self.importTask = nil
                     if self.ejectAfterSuccessfulImport, self.canEjectSource(for: result) {
                         self.ejectSource(for: result)
@@ -1340,6 +1688,8 @@ final class AppModel: ObservableObject {
                     self.importProgress = nil
                     self.statusMessage = "Import cancelled"
                     self.isWorking = false
+                    self.activeImportRetryContext = nil
+                    self.transitionImportWorkspace(.cancelled)
                     self.importTask = nil
                 }
                 importLogger.notice("Import cancelled jobID=\(jobID, privacy: .private)")
@@ -1347,8 +1697,15 @@ final class AppModel: ObservableObject {
                 await MainActor.run {
                     self.currentResult = nil
                     self.importProgress = nil
-                    self.statusMessage = "Import failed: \(Self.errorMessage(for: error))"
+                    let message = "Import failed: \(Self.errorMessage(for: error))"
+                    let failedOperation = self.activeImportOperation ?? .copy
+                    self.statusMessage = message
                     self.isWorking = false
+                    self.failedImportRetryContext = self.activeImportRetryContext
+                    self.activeImportRetryContext = nil
+                    self.transitionImportWorkspace(
+                        .failed(operation: failedOperation, message: message)
+                    )
                     self.importTask = nil
                 }
                 importLogger.error("Import failed errorType=\(String(describing: type(of: error)), privacy: .public)")
@@ -1364,10 +1721,114 @@ final class AppModel: ObservableObject {
         importTask?.cancel()
     }
 
+    private func transitionImportWorkspace(_ event: ImportWorkspaceEvent) {
+        let next = ImportWorkspaceTransition.applying(
+            event,
+            to: ImportWorkspaceSnapshot(
+                phase: importUIPhase,
+                activeOperation: activeImportOperation,
+                failure: importFailure
+            )
+        )
+        importUIPhase = next.phase
+        activeImportOperation = next.activeOperation
+        importFailure = next.failure
+    }
+
+    func recoverImportWorkspace() {
+        failedImportRetryContext = nil
+        transitionImportWorkspace(.recover(hasScannedJob: currentSummary != nil))
+        statusMessage = currentSummary == nil ? "Ready" : "Review import"
+    }
+
+    func recoverImportReceipt() {
+        guard currentResult != nil else {
+            recoverImportWorkspace()
+            return
+        }
+        failedImportRetryContext = nil
+        transitionImportWorkspace(.recoverCompleted)
+        statusMessage = "Import finished"
+    }
+
+    func retryFailedImportOperation() {
+        let operation = importFailure?.operation
+        let retryContext = failedImportRetryContext
+        failedImportRetryContext = nil
+        switch retryContext {
+        case .currentReview:
+            transitionImportWorkspace(.recover(hasScannedJob: true))
+            importCurrentJob()
+            return
+        case .existingJob(let jobID):
+            guard let databaseURL else {
+                statusMessage = "Database is not ready"
+                return
+            }
+            selectedJobID = jobID
+            transitionImportWorkspace(.recover(hasScannedJob: false))
+            startImport(
+                jobID: jobID,
+                databaseURL: databaseURL,
+                retryContext: .existingJob(jobID: jobID),
+                planMode: .existing
+            )
+            return
+        case .portableReceiptOverride:
+            transitionImportWorkspace(.recover(hasScannedJob: true))
+            importPortableKnownFilesAnyway()
+            return
+        case .eject(let jobID, let target):
+            transitionImportWorkspace(
+                currentResult == nil
+                    ? .recover(hasScannedJob: currentSummary != nil)
+                    : .recoverCompleted
+            )
+            ejectSource(jobID: jobID, target: target)
+            return
+        case nil:
+            break
+        }
+
+        switch operation {
+        case .scan:
+            transitionImportWorkspace(.recover(hasScannedJob: false))
+            scan()
+        case .prepareImport, .copy:
+            recoverImportWorkspace()
+        case .portableReceiptOverride:
+            transitionImportWorkspace(.recover(hasScannedJob: true))
+            importPortableKnownFilesAnyway()
+        case .eject:
+            recoverImportWorkspace()
+        case nil:
+            recoverImportWorkspace()
+        }
+    }
+
+    func importAnotherCard() {
+        guard !isWorking, !isEjectingSource else {
+            return
+        }
+        currentSummary = nil
+        currentResult = nil
+        importProgress = nil
+        previewSessions = []
+        currentPreviewFiles = []
+        knownImportedPreviewFileIDs = []
+        clearPreviewPlanCache()
+        mediaContentProfile = nil
+        photoPairSummary = nil
+        activeImportRetryContext = nil
+        failedImportRetryContext = nil
+        resetImportDraftFromDefaults()
+        transitionImportWorkspace(.recover(hasScannedJob: false))
+        statusMessage = "Ready for another card"
+    }
+
     func acceptMountedVolumePrompt() {
-        guard !isWorking else {
-            pendingMountedVolume = nil
-            statusMessage = "Finish the current import before scanning another card"
+        guard !isWorking, !isEjectingSource else {
+            statusMessage = "Finish the current operation before scanning another card"
             return
         }
         guard let volume = pendingMountedVolume else {
@@ -2134,7 +2595,7 @@ final class AppModel: ObservableObject {
         guard let selectedJobID else {
             return
         }
-        guard !isWorking else {
+        guard !isWorking, !isEjectingSource else {
             statusMessage = "Finish the current scan or import first"
             return
         }
@@ -2146,28 +2607,66 @@ final class AppModel: ObservableObject {
             statusMessage = "Database is not ready"
             return
         }
+        selection = .import
         currentSummary = nil
         startImport(
             jobID: selectedJobID,
             databaseURL: databaseURL,
+            retryContext: .existingJob(jobID: selectedJobID),
             planMode: .existing
         )
     }
 
-    func completeOnboarding() {
+    func saveOnboardingSetup() {
+        let previousDefaults = importDefaults
         hasCompletedOnboarding = true
-        savePreferences()
+        importDefaults = ImportDefaults(
+            photosPath: photosPath,
+            videosPath: videosPath,
+            shootName: Self.defaultSessionLabel(for: location),
+            workflowProfile: workflowProfile,
+            mediaSelection: importMediaSelection,
+            destinationLayout: destinationLayout,
+            preferredMixedDestinationLayout: preferredMixedDestinationLayout,
+            folderGrouping: folderGrouping
+        )
+        guard savePreferences(refreshFolderBookmarks: true, persistAutoPromptPreference: true) else {
+            hasCompletedOnboarding = false
+            importDefaults = previousDefaults
+            validateDefaultPaths()
+            return
+        }
         updateLoginItemRegistration()
-        statusMessage = "Ready"
+        if settingsFeedback == nil {
+            statusMessage = "Ready"
+        }
         schedulePendingMountHandoffRetry()
     }
 
+    func skipOnboardingSetup() {
+        hasCompletedOnboarding = true
+        cardPath = initialOnboardingSourcePath
+        resetImportDraftFromDefaults()
+        autoPromptEnabled = defaults.bool(forKey: DefaultsKeys.autoPromptEnabled)
+        guard savePreferences() else {
+            hasCompletedOnboarding = false
+            return
+        }
+        updateLoginItemRegistration()
+        statusMessage = "Setup skipped. Defaults can be changed in Settings."
+        schedulePendingMountHandoffRetry()
+    }
+
+    func completeOnboarding() {
+        saveOnboardingSetup()
+    }
+
     func revealPhotosFolder() {
-        reveal(path: photosPath)
+        reveal(path: importDefaults.photosPath)
     }
 
     func revealVideosFolder() {
-        reveal(path: videosPath)
+        reveal(path: importDefaults.videosPath)
     }
 
     func revealReport(for job: ImportJob) {
@@ -2427,7 +2926,14 @@ final class AppModel: ObservableObject {
     }
 
     private func ejectSource(jobID: String, target: SourceEjectionTarget) {
+        guard !isWorking, !isEjectingSource else {
+            statusMessage = "Finish the current operation before ejecting"
+            return
+        }
         isEjectingSource = true
+        activeImportRetryContext = .eject(jobID: jobID, target: target)
+        failedImportRetryContext = nil
+        transitionImportWorkspace(.beginAuxiliaryOperation(.eject))
         statusMessage = target.volumeCount > 1
             ? "Ejecting \(target.displayName) storage..."
             : "Ejecting source..."
@@ -2440,6 +2946,8 @@ final class AppModel: ObservableObject {
                 try await Self.ejectDevice(target)
                 guard !Task.isCancelled else {
                     self.isEjectingSource = false
+                    self.activeImportRetryContext = nil
+                    self.transitionImportWorkspace(.endAuxiliaryOperation)
                     self.sourceEjectionTask = nil
                     return
                 }
@@ -2447,6 +2955,8 @@ final class AppModel: ObservableObject {
                 self.ejectedSourceVolumeCount = target.volumeCount
                 self.ejectedSourceJobID = jobID
                 self.isEjectingSource = false
+                self.activeImportRetryContext = nil
+                self.transitionImportWorkspace(.endAuxiliaryOperation)
                 self.sourceEjectionTask = nil
                 self.refreshAvailableSourceVolumes()
                 self.validatePaths()
@@ -2455,11 +2965,17 @@ final class AppModel: ObservableObject {
                     : "Source ejected safely"
             } catch is CancellationError {
                 self.isEjectingSource = false
+                self.activeImportRetryContext = nil
+                self.transitionImportWorkspace(.endAuxiliaryOperation)
                 self.sourceEjectionTask = nil
             } catch {
                 self.isEjectingSource = false
                 self.sourceEjectionTask = nil
-                self.statusMessage = "Could not eject source: \(error.localizedDescription)"
+                let message = "Could not eject source: \(error.localizedDescription)"
+                self.statusMessage = message
+                self.failedImportRetryContext = self.activeImportRetryContext
+                self.activeImportRetryContext = nil
+                self.transitionImportWorkspace(.failed(operation: .eject, message: message))
             }
         }
     }
@@ -2691,15 +3207,6 @@ final class AppModel: ObservableObject {
         return workflowProfilesByVolume[key]
     }
 
-    private func rememberWorkflowPreferenceForCurrentVolume() {
-        guard let currentSummary else {
-            return
-        }
-        if let key = volumePreferenceKey(uuid: currentSummary.volumeUUID, name: currentSummary.volumeName) {
-            workflowProfilesByVolume[key] = workflowProfile
-        }
-    }
-
     private func volumePreferenceKey(uuid: String?, name: String?) -> String? {
         if let uuid = uuid?.trimmingCharacters(in: .whitespacesAndNewlines), !uuid.isEmpty {
             return "uuid:\(uuid)"
@@ -2838,6 +3345,17 @@ final class AppModel: ObservableObject {
         themePreference = configuration.themePreference
         workflowProfilesByVolume = configuration.workflowProfilesByVolume
         hiddenRecentPaths = Set(configuration.hiddenRecentPaths.map(normalizedRecentPath).filter { !$0.isEmpty })
+        importDefaults = ImportDefaults(
+            photosPath: photosPath,
+            videosPath: videosPath,
+            shootName: Self.defaultSessionLabel(for: location),
+            workflowProfile: workflowProfile,
+            mediaSelection: importMediaSelection,
+            destinationLayout: destinationLayout,
+            preferredMixedDestinationLayout: preferredMixedDestinationLayout,
+            folderGrouping: folderGrouping
+        )
+        initialOnboardingSourcePath = cardPath
 
         if try settingsRepository.fetchConfiguration() == nil {
             try settingsRepository.saveConfiguration(currentConfiguration())
@@ -2859,21 +3377,30 @@ final class AppModel: ObservableObject {
     }
 
     private func currentConfiguration() -> AppConfiguration {
-        AppConfiguration(
+        let validator = PathValidator()
+        let defaultPhotosValidation = validator.validate(
+            path: importDefaults.photosPath,
+            purpose: .destination
+        )
+        let defaultVideosValidation = validator.validate(
+            path: importDefaults.videosPath,
+            purpose: .destination
+        )
+        return AppConfiguration(
             sourcePath: resolvedPath(cardPath, validation: sourceValidation),
-            photosPath: resolvedPath(photosPath, validation: photosValidation),
-            videosPath: resolvedPath(videosPath, validation: videosValidation),
-            defaultLocation: Self.defaultSessionLabel(for: location),
+            photosPath: resolvedPath(importDefaults.photosPath, validation: defaultPhotosValidation),
+            videosPath: resolvedPath(importDefaults.videosPath, validation: defaultVideosValidation),
+            defaultLocation: Self.defaultSessionLabel(for: importDefaults.shootName),
             historyRetention: historyRetention,
             autoPromptEnabled: autoPromptEnabled,
             ejectAfterSuccessfulImport: ejectAfterSuccessfulImport,
             portableImportReceiptsEnabled: portableImportReceiptsEnabled,
             hasCompletedOnboarding: hasCompletedOnboarding,
-            lastWorkflowProfile: workflowProfile,
-            lastMediaSelection: importMediaSelection,
-            lastDestinationLayout: destinationLayout,
-            preferredMixedDestinationLayout: preferredMixedDestinationLayout,
-            lastFolderGrouping: folderGrouping,
+            lastWorkflowProfile: importDefaults.workflowProfile,
+            lastMediaSelection: importDefaults.mediaSelection,
+            lastDestinationLayout: importDefaults.destinationLayout,
+            preferredMixedDestinationLayout: importDefaults.preferredMixedDestinationLayout,
+            lastFolderGrouping: importDefaults.folderGrouping,
             themePreference: themePreference,
             workflowProfilesByVolume: workflowProfilesByVolume,
             hiddenRecentPaths: hiddenRecentPaths.sorted()
@@ -2908,7 +3435,7 @@ final class AppModel: ObservableObject {
                 guard BackgroundPromptDeliveryPolicy.canCommitPrompt(
                     desiredEnabled: self.autoPromptEnabled,
                     hasCompletedOnboarding: self.hasCompletedOnboarding,
-                    isWorking: self.isWorking,
+                    isWorking: self.isWorking || self.isEjectingSource,
                     hasPendingPrompt: self.pendingMountedVolume != nil
                 ) else {
                     return .deferred
@@ -2970,6 +3497,7 @@ final class AppModel: ObservableObject {
                 self.autoPromptEnabled,
                 self.hasCompletedOnboarding,
                 !self.isWorking,
+                !self.isEjectingSource,
                 self.pendingMountedVolume == nil,
                 BackgroundPromptDeliveryPolicy.canObserveDirectMount(
                     desiredEnabled: self.autoPromptEnabled,

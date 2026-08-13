@@ -1,105 +1,109 @@
+import AppKit
 import SDImportCore
 import SwiftUI
 
 struct ImportPreviewView: View {
     @EnvironmentObject private var model: AppModel
-    @State private var showsExcludedFiles = false
+    @AppStorage("SDImport.importPreviewMode") private var previewMode = ImportPreviewMode.list
     @State private var fileFilter: ImportPreviewFileFilter = .all
+    @State private var selectedRowID: Int64?
+    @State private var showsDateCustomization = false
+    @StateObject private var thumbnailProvider = ImportThumbnailProvider()
+    @StateObject private var quickLook = ImportQuickLookController()
+    @AccessibilityFocusState private var reviewHeadingIsFocused: Bool
+
+    private var displayedRows: [ImportPreviewRow] {
+        sortedRows(model.previewRows.filter(fileFilter.includes))
+    }
+
+    private var selectedRow: ImportPreviewRow? {
+        model.previewRows.first { $0.id == selectedRowID }
+    }
 
     var body: some View {
-        let rows = model.previewRows
-        let totals = model.previewTotals
+        AppPage(scrolls: false, maxContentWidth: .infinity) {
+            VStack(alignment: .leading, spacing: 14) {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 14) {
+                        reviewHeading
+                        ImportSourceSummaryView(allowsChange: true, allowsRescan: true)
 
-        VStack(alignment: .leading, spacing: 18) {
-            if totals.copyFiles == 0 {
-                AppSection("Nothing New", systemImage: "checkmark.seal") {
-                    zeroMatchSection(rows: rows)
-                    if showsExcludedFiles {
-                        fileList(rows: rows, totals: totals)
+                        if model.previewTotals.copyFiles == 0 {
+                            zeroCopyCard
+                        } else {
+                            importPlanCard
+                        }
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-            } else {
-                AppSection("Import Plan", systemImage: "list.bullet.rectangle") {
-                    header(rows: rows, totals: totals)
-                    controls
-                    if hasSupportedMedia {
-                        ImportDestinationFields()
-                        sessionList
-                    }
-                    destinationSummary(rows: rows, totals: totals)
-                    importActionRow
-                }
+                .frame(minHeight: 180, idealHeight: 280, maxHeight: 360)
+                .accessibilityLabel("Import plan and source")
 
-                AppSection("Files", systemImage: "doc.text.magnifyingglass") {
-                    if rows.isEmpty {
-                        ContentUnavailableView("No Files", systemImage: "doc")
-                            .frame(maxWidth: .infinity, minHeight: 120)
-                    } else {
-                        fileList(rows: rows, totals: totals)
-                    }
+                fileBrowser
+                    .frame(minHeight: 160)
+                    .frame(maxHeight: .infinity)
+            }
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            ImportReviewFooter()
+                .environmentObject(model)
+        }
+        .inspector(isPresented: inspectorBinding) {
+            if let selectedRow {
+                ImportFileInspector(row: selectedRow) {
+                    presentQuickLook(for: selectedRow)
                 }
+                .frame(minWidth: 260, idealWidth: 300)
+            }
+        }
+        .onAppear {
+            reviewHeadingIsFocused = true
+        }
+        .onChange(of: model.cardPath) {
+            thumbnailProvider.cancelAll()
+            quickLook.dismiss()
+        }
+        .onChange(of: model.importUIPhase) {
+            if model.importUIPhase != .review {
+                thumbnailProvider.cancelAll()
+                quickLook.dismiss()
             }
         }
     }
 
-    private func header(rows: [ImportPreviewRow], totals: ImportPreviewTotals) -> some View {
-        let skipped = skipBreakdown(rows: rows)
-
-        return HStack(spacing: 8) {
-            InfoPill(
-                title: totals.copyFiles == 0
-                    ? "Nothing to copy"
-                    : (totals.copyFiles == 1 ? "1 file to copy" : "\(totals.copyFiles) files to copy"),
-                systemImage: totals.copyFiles == 0 ? "checkmark.circle" : "arrow.down.circle",
-                role: totals.copyFiles == 0 ? .neutral : .success
-            )
-            InfoPill(
-                title: byteString(totals.copyBytes),
-                systemImage: "externaldrive"
-            )
-            if skipped.knownFiles > 0 {
-                InfoPill(
-                    title: "\(skipped.knownFiles) known",
-                    systemImage: "checkmark.seal",
-                    role: .neutral
-                )
-            }
-            if skipped.excludedFiles > 0 {
-                InfoPill(
-                    title: "\(skipped.excludedFiles) excluded",
-                    systemImage: "minus.circle",
-                    role: .warning
-                )
-            }
-            if skipped.sidecarFiles > 0 {
-                InfoPill(
-                    title: "\(skipped.sidecarFiles) sidecars skipped",
-                    systemImage: "paperclip",
-                    role: .neutral
-                )
-            }
-            Spacer()
+    private var reviewHeading: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Review import")
+                .font(.title2)
+                .fontWeight(.semibold)
+                .accessibilityFocused($reviewHeadingIsFocused)
+                .accessibilityIdentifier("import.phase.review.heading")
+            Text("Confirm what will be copied and where it will go.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
         }
     }
 
-    private var controls: some View {
-        VStack(alignment: .leading, spacing: 10) {
+    private var importPlanCard: some View {
+        AppSection("Import Plan", systemImage: "list.bullet.rectangle") {
+            reviewSummary
+
             if let mediaContent = model.mediaContentProfile {
-                Label(mediaContent.cardContentsText, systemImage: "externaldrive.badge.checkmark")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            if let photoPairSummary = model.photoPairSummary,
-               photoPairSummary.rawJPEGPairCount > 0 {
-                Label("\(photoPairSummary.rawJPEGPairCount) RAW+JPEG pairs", systemImage: "photo.on.rectangle")
+                Label(mediaContentSummary(mediaContent), systemImage: "externaldrive.badge.checkmark")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
             importOptionControls
 
+            if hasSupportedMedia {
+                ImportDestinationFields()
+                defaultsAction
+                sessionControls
+            }
+
             portableReceiptOverride
+            destinationTree
 
             if let warning = selectedMediaAvailabilityMessage {
                 AppStatusLabel(
@@ -107,47 +111,63 @@ struct ImportPreviewView: View {
                     systemImage: "info.circle",
                     role: .warning
                 )
-                    .font(.caption)
+                .font(.caption)
+            }
+        }
+    }
+
+    private var reviewSummary: some View {
+        let summary = model.currentSummary
+        return ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) {
+                summaryPills(summary: summary)
+                Spacer(minLength: 0)
+            }
+
+            VStack(alignment: .leading, spacing: 7) {
+                summaryPills(summary: summary)
             }
         }
     }
 
     @ViewBuilder
-    private var portableReceiptOverride: some View {
-        let count = model.previewRows.filter { $0.status == "Other Mac" }.count
-        if count > 0 {
-            HStack(spacing: 10) {
-                AppStatusLabel(
-                    title: count == 1
-                        ? "1 file was imported on another Mac"
-                        : "\(count) files were imported on another Mac",
-                    systemImage: "externaldrive.badge.checkmark",
-                    role: .neutral
-                )
-                    .font(.caption)
-
-                Button("Import Anyway") {
-                    model.importPortableKnownFilesAnyway()
-                }
-                .buttonStyle(.bordered)
-                .disabled(model.isWorking)
-            }
+    private func summaryPills(summary: ScanSummary?) -> some View {
+        InfoPill(
+            title: model.previewTotals.copyFiles == 1
+                ? "1 file ready"
+                : "\(model.previewTotals.copyFiles) files ready",
+            systemImage: "arrow.down.circle",
+            role: .success
+        )
+        InfoPill(
+            title: ByteCountFormatter.string(fromByteCount: model.previewTotals.copyBytes, countStyle: .file),
+            systemImage: "externaldrive"
+        )
+        if let summary, summary.knownFiles > 0 {
+            InfoPill(title: "\(summary.knownFiles) known", systemImage: "checkmark.seal")
         }
-    }
-
-    private var hasSupportedMedia: Bool {
-        guard let mediaContent = model.mediaContentProfile else {
-            return true
+        if model.previewAttentionCount > 0 {
+            InfoPill(
+                title: "\(model.previewAttentionCount) attention",
+                systemImage: "exclamationmark.triangle",
+                role: .warning
+            )
         }
-        return mediaContent.supportedCount > 0
+        if model.previewDestinationIssueCount > 0 {
+            InfoPill(
+                title: model.previewDestinationIssueCount == 1
+                    ? "1 destination issue"
+                    : "\(model.previewDestinationIssueCount) destination issues",
+                systemImage: "externaldrive.badge.exclamationmark",
+                role: .warning
+            )
+        }
     }
 
     private var importOptionControls: some View {
-        Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 8) {
-            GridRow {
-                Text("Import Type")
-                    .foregroundStyle(.secondary)
-                Picker("Import Type", selection: mediaSelectionBinding) {
+        VStack(alignment: .leading, spacing: 10) {
+            optionRow("Copy") {
+                Picker("Copy", selection: mediaSelectionBinding) {
                     ForEach(ImportMediaSelection.allCases) { selection in
                         Text(mediaSelectionTitle(selection))
                             .tag(selection)
@@ -159,13 +179,10 @@ struct ImportPreviewView: View {
             }
 
             if showsMixedDestinationLayout {
-                GridRow {
-                    Text("Destination")
-                        .foregroundStyle(.secondary)
-                    Picker("Destination", selection: destinationLayoutBinding) {
-                        ForEach(mixedDestinationLayouts) { layout in
-                            Text(layout.displayTitle)
-                                .tag(layout)
+                optionRow("Save to") {
+                    Picker("Save to", selection: destinationLayoutBinding) {
+                        ForEach([ImportDestinationLayout.singleLibrary, .separateMediaFolders]) { layout in
+                            Text(layout.displayTitle).tag(layout)
                         }
                     }
                     .labelsHidden()
@@ -173,29 +190,438 @@ struct ImportPreviewView: View {
                 }
             }
 
-            GridRow {
-                Text("Group Into")
-                    .foregroundStyle(.secondary)
-                Picker("Group Into", selection: folderGroupingBinding) {
+            optionRow("Organize") {
+                Picker("Organize", selection: folderGroupingBinding) {
                     ForEach(ImportFolderGrouping.allCases) { grouping in
                         Text(grouping.displayTitle).tag(grouping)
                     }
                 }
                 .labelsHidden()
                 .pickerStyle(.segmented)
-                .frame(width: 320)
             }
         }
     }
 
-    private var showsMixedDestinationLayout: Bool {
-        model.importMediaSelection == .photosAndVideos
-            && (model.mediaContentProfile?.photoCount ?? 1) > 0
-            && (model.mediaContentProfile?.videoCount ?? 1) > 0
+    private func optionRow<Content: View>(
+        _ title: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 12) {
+                Text(title)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 88, alignment: .leading)
+                content()
+                    .frame(maxWidth: 440)
+                Spacer(minLength: 0)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text(title)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                content()
+                    .frame(maxWidth: 440)
+            }
+        }
     }
 
-    private var mixedDestinationLayouts: [ImportDestinationLayout] {
-        [.singleLibrary, .separateMediaFolders]
+    @ViewBuilder
+    private var defaultsAction: some View {
+        if !model.importDraftUsesDefaults {
+            HStack(spacing: 8) {
+                AppStatusLabel(
+                    title: "These choices apply to this import only",
+                    systemImage: "info.circle",
+                    role: .info
+                )
+                .font(.caption)
+
+                Button("Use as Defaults") {
+                    model.saveImportDraftAsDefaults()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var sessionControls: some View {
+        let unsupportedCount = model.previewSessions.reduce(0) { $0 + $1.unsupportedCount }
+
+        if model.importMediaSelection == .videosOnly, unsupportedCount > 0 {
+            Toggle(
+                "Include camera support files (\(unsupportedCount))",
+                isOn: allSessionsBinding(\.includeSidecars)
+            )
+            .help("Includes metadata, proxy, audio, thumbnail, and other camera support files in footage backups.")
+        }
+
+        if model.folderGrouping == .byDay, model.previewSessions.count > 1 {
+            DisclosureGroup("Customize Dates", isExpanded: $showsDateCustomization) {
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach($model.previewSessions) { $session in
+                        sessionEditor(session: $session)
+                    }
+                }
+                .padding(.top, 8)
+            }
+        }
+    }
+
+    private func sessionEditor(session: Binding<ImportPreviewSession>) -> some View {
+        let value = session.wrappedValue
+        return ViewThatFits(in: .horizontal) {
+            HStack(spacing: 10) {
+                Text(value.date)
+                    .font(.system(.callout, design: .monospaced))
+                    .frame(width: 96, alignment: .leading)
+                TextField("Folder label", text: session.label)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(maxWidth: 260)
+                if value.photoCount > 0 {
+                    mediaSessionControl(
+                        title: "Photos \(value.photoCount)",
+                        isGloballyIncluded: model.importMediaSelection.includes(.photo),
+                        isIncluded: session.includePhotos
+                    )
+                }
+                if value.videoCount > 0 {
+                    mediaSessionControl(
+                        title: "Videos \(value.videoCount)",
+                        isGloballyIncluded: model.importMediaSelection.includes(.video),
+                        isIncluded: session.includeVideos
+                    )
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 7) {
+                Text(value.date)
+                    .font(.system(.callout, design: .monospaced))
+                TextField("Folder label", text: session.label)
+                    .textFieldStyle(.roundedBorder)
+                HStack(spacing: 12) {
+                    if value.photoCount > 0 {
+                        mediaSessionControl(
+                            title: "Photos \(value.photoCount)",
+                            isGloballyIncluded: model.importMediaSelection.includes(.photo),
+                            isIncluded: session.includePhotos
+                        )
+                    }
+                    if value.videoCount > 0 {
+                        mediaSessionControl(
+                            title: "Videos \(value.videoCount)",
+                            isGloballyIncluded: model.importMediaSelection.includes(.video),
+                            isIncluded: session.includeVideos
+                        )
+                    }
+                }
+            }
+        }
+        .padding(10)
+        .appCardSurface(cornerRadius: 6)
+    }
+
+    @ViewBuilder
+    private func mediaSessionControl(
+        title: String,
+        isGloballyIncluded: Bool,
+        isIncluded: Binding<Bool>
+    ) -> some View {
+        if isGloballyIncluded {
+            Toggle(title, isOn: isIncluded)
+        } else {
+            Text("\(title) excluded")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .accessibilityLabel("\(title), excluded by Copy selection")
+        }
+    }
+
+    @ViewBuilder
+    private var portableReceiptOverride: some View {
+        let count = model.previewRows.filter(\.isPortableKnown).count
+        if count > 0 {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 10) {
+                    portableReceiptLabel(count: count)
+                    Button("Import Anyway") {
+                        model.importPortableKnownFilesAnyway()
+                    }
+                    .buttonStyle(.bordered)
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    portableReceiptLabel(count: count)
+                    Button("Import Anyway") {
+                        model.importPortableKnownFilesAnyway()
+                    }
+                    .buttonStyle(.bordered)
+                }
+            }
+        }
+    }
+
+    private func portableReceiptLabel(count: Int) -> some View {
+        AppStatusLabel(
+            title: count == 1
+                ? "1 file was imported on another Mac"
+                : "\(count) files were imported on another Mac",
+            systemImage: "externaldrive.badge.checkmark",
+            role: .neutral
+        )
+        .font(.caption)
+    }
+
+    @ViewBuilder
+    private var destinationTree: some View {
+        if !model.previewDestinations.isEmpty || !model.previewSpaceRequirements.isEmpty {
+            Divider()
+            Text("Destinations")
+                .font(.subheadline)
+                .fontWeight(.semibold)
+
+            ForEach(model.previewDestinations) { destination in
+                DestinationTreeRow(
+                    destination: destination,
+                    rootTitle: destinationRootTitle(for: destination)
+                )
+            }
+
+            ForEach(model.previewSpaceRequirements) { requirement in
+                AppStatusLabel(
+                    title: spaceText(for: requirement),
+                    systemImage: requirement.isSatisfied ? "checkmark.circle" : "exclamationmark.triangle",
+                    role: requirement.isSatisfied ? .neutral : .warning
+                )
+                .font(.caption)
+            }
+        }
+    }
+
+    private var zeroCopyCard: some View {
+        AppSection("Nothing New", systemImage: "checkmark.seal") {
+            Text(zeroCopyTitle)
+                .font(.headline)
+            Text(zeroCopyDetail)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if hasSupportedMedia {
+                Divider()
+                importOptionControls
+                ImportDestinationFields()
+                defaultsAction
+                sessionControls
+            }
+
+            portableReceiptOverride
+
+            HStack(spacing: 8) {
+                if canRecoverPhotos {
+                    Button("Import Photos") {
+                        model.applyWorkflowProfile(.photoImport)
+                    }
+                    .buttonStyle(.bordered)
+                }
+                if canRecoverVideos {
+                    Button("Import Videos") {
+                        model.applyWorkflowProfile(.footageBackup)
+                    }
+                    .buttonStyle(.bordered)
+                }
+            }
+        }
+    }
+
+    private var fileBrowser: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            fileBrowserToolbar
+
+            Group {
+                if displayedRows.isEmpty {
+                    ContentUnavailableView(
+                        "No Matching Files",
+                        systemImage: "line.3.horizontal.decrease.circle"
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if previewMode == .list {
+                    fileTable
+                } else {
+                    fileGrid
+                }
+            }
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Import file preview")
+        }
+        .padding(14)
+        .appCardSurface()
+    }
+
+    private var fileBrowserToolbar: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 10) {
+                fileBrowserHeading
+                Spacer(minLength: 8)
+                filterPicker
+                modePicker
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                fileBrowserHeading
+                HStack(spacing: 8) {
+                    filterMenu
+                    modePicker
+                }
+            }
+        }
+    }
+
+    private var fileBrowserHeading: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("Files")
+                .font(.headline)
+            Text("\(displayedRows.count) of \(model.previewRows.count)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var filterPicker: some View {
+        Picker("File Filter", selection: $fileFilter) {
+            ForEach(ImportPreviewFileFilter.allCases) { filter in
+                Text(filterTitle(filter)).tag(filter)
+            }
+        }
+        .labelsHidden()
+        .pickerStyle(.segmented)
+        .frame(maxWidth: 430)
+        .accessibilityLabel("File filter")
+        .accessibilityIdentifier("import.review.file-filter")
+    }
+
+    private var filterMenu: some View {
+        Picker("File Filter", selection: $fileFilter) {
+            ForEach(ImportPreviewFileFilter.allCases) { filter in
+                Text(filterTitle(filter)).tag(filter)
+            }
+        }
+        .pickerStyle(.menu)
+        .frame(maxWidth: 180)
+    }
+
+    private var modePicker: some View {
+        Picker("Preview Mode", selection: $previewMode) {
+            Label("List", systemImage: "list.bullet").tag(ImportPreviewMode.list)
+            Label("Grid", systemImage: "square.grid.2x2").tag(ImportPreviewMode.grid)
+        }
+        .labelsHidden()
+        .pickerStyle(.segmented)
+        .frame(width: 120)
+        .accessibilityLabel("Preview mode")
+        .accessibilityIdentifier("import.review.preview-mode")
+    }
+
+    private var fileTable: some View {
+        Table(displayedRows, selection: $selectedRowID) {
+            TableColumn("Status") { row in
+                PreviewStatusBadge(row: row)
+            }
+            .width(min: 105, ideal: 125)
+
+            TableColumn("File", value: \.filename)
+                .width(min: 150, ideal: 240)
+
+            TableColumn("Kind") { row in
+                Text(row.mediaKind.displayTitle)
+                    .foregroundStyle(.secondary)
+            }
+            .width(min: 70, ideal: 84)
+
+            TableColumn("Size") { row in
+                Text(ByteCountFormatter.string(fromByteCount: row.size, countStyle: .file))
+                    .foregroundStyle(.secondary)
+            }
+            .width(min: 72, ideal: 88)
+
+            TableColumn("Destination") { row in
+                Text(destinationText(for: row))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .foregroundStyle(row.willCopy ? .primary : .secondary)
+                    .help(row.destinationPath ?? row.sourcePath)
+            }
+            .width(min: 180, ideal: 360)
+        }
+        .contextMenu(forSelectionType: Int64.self) { selection in
+            Button("Quick Look") {
+                if let id = selection.first, let row = model.previewRows.first(where: { $0.id == id }) {
+                    presentQuickLook(for: row)
+                }
+            }
+            .disabled(selection.isEmpty)
+        } primaryAction: { selection in
+            if let id = selection.first, let row = model.previewRows.first(where: { $0.id == id }) {
+                presentQuickLook(for: row)
+            }
+        }
+        .onKeyPress(.space) {
+            presentSelectedQuickLook()
+            return .handled
+        }
+        .accessibilityIdentifier("import.review.file-table")
+    }
+
+    private var fileGrid: some View {
+        ScrollView {
+            LazyVGrid(
+                columns: [GridItem(.adaptive(minimum: 155, maximum: 240), spacing: 10)],
+                alignment: .leading,
+                spacing: 10
+            ) {
+                ForEach(visualItems(from: displayedRows)) { item in
+                    Button {
+                        selectedRowID = item.primaryRow.id
+                    } label: {
+                        ImportPreviewGridCell(
+                            item: item,
+                            isSelected: item.rows.contains { $0.id == selectedRowID },
+                            thumbnailProvider: thumbnailProvider
+                        )
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .simultaneousGesture(TapGesture(count: 2).onEnded {
+                        selectedRowID = item.primaryRow.id
+                        presentQuickLook(for: item.primaryRow)
+                    })
+                    .onKeyPress(.space) {
+                        selectedRowID = item.primaryRow.id
+                        presentQuickLook(for: item.primaryRow)
+                        return .handled
+                    }
+                    .accessibilityHint("Press Space for Quick Look")
+                    .accessibilityIdentifier("import.review.grid-item.\(item.primaryRow.id)")
+                }
+            }
+            .padding(.vertical, 4)
+        }
+        .onKeyPress(.space) {
+            presentSelectedQuickLook()
+            return .handled
+        }
+    }
+
+    private var inspectorBinding: Binding<Bool> {
+        Binding {
+            selectedRow != nil
+        } set: { isPresented in
+            if !isPresented {
+                selectedRowID = nil
+            }
+        }
     }
 
     private var mediaSelectionBinding: Binding<ImportMediaSelection> {
@@ -222,159 +648,9 @@ struct ImportPreviewView: View {
         }
     }
 
-    private var sessionList: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if model.folderGrouping == .oneShootFolder {
-                shootFolderSessionRow
-            } else {
-                ForEach($model.previewSessions) { $session in
-                    Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 6) {
-                        GridRow {
-                            Text(session.date)
-                                .font(.system(.body, design: .monospaced))
-                                .frame(width: 96, alignment: .leading)
-
-                            TextField("Label", text: $session.label)
-                                .textFieldStyle(.roundedBorder)
-                                .frame(minWidth: 180, maxWidth: 300)
-
-                            sessionMediaControls(session: session, includePhotos: $session.includePhotos, includeVideos: $session.includeVideos)
-
-                            sessionSidecarControl(
-                                unsupportedCount: session.unsupportedCount,
-                                includeSidecars: $session.includeSidecars
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private var shootFolderSessionRow: some View {
-        let photoCount = model.previewSessions.reduce(0) { $0 + $1.photoCount }
-        let videoCount = model.previewSessions.reduce(0) { $0 + $1.videoCount }
-        let unsupportedCount = model.previewSessions.reduce(0) { $0 + $1.unsupportedCount }
-        let dates = model.previewSessions.map(\.date)
-
-        return Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 6) {
-            GridRow {
-                Text(ImportPlanBuilder.dateRangeTitle(for: dates))
-                    .font(.system(.body, design: .monospaced))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .help(ImportPlanBuilder.dateRangeTitle(for: dates))
-                    .frame(width: 184, alignment: .leading)
-
-                sessionMediaControls(
-                    photoCount: photoCount,
-                    videoCount: videoCount,
-                    includePhotos: allSessionsBinding(\.includePhotos),
-                    includeVideos: allSessionsBinding(\.includeVideos)
-                )
-
-                sessionSidecarControl(
-                    unsupportedCount: unsupportedCount,
-                    includeSidecars: allSessionsBinding(\.includeSidecars)
-                )
-            }
-        }
-    }
-
-    private var importActionRow: some View {
-        HStack(spacing: 10) {
-            Button {
-                model.importCurrentJob()
-            } label: {
-                Label(importButtonTitle, systemImage: "square.and.arrow.down")
-            }
-            .buttonStyle(.borderedProminent)
-            .disabled(!model.canImportPlannedFiles)
-
-            if model.previewTotals.copyFiles == 0 {
-                Text("Nothing new is selected to copy")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-        }
-    }
-
-    private var importButtonTitle: String {
-        let total = model.previewTotals.copyFiles
-        guard total > 0 else {
-            return "Copy Files"
-        }
-        return total == 1 ? "Copy 1 File" : "Copy \(total) Files"
-    }
-
-    @ViewBuilder
-    private func sessionMediaControls(
-        session: ImportPreviewSession,
-        includePhotos: Binding<Bool>,
-        includeVideos: Binding<Bool>
-    ) -> some View {
-        sessionMediaControls(
-            photoCount: session.photoCount,
-            videoCount: session.videoCount,
-            includePhotos: includePhotos,
-            includeVideos: includeVideos
-        )
-    }
-
-    @ViewBuilder
-    private func sessionMediaControls(
-        photoCount: Int,
-        videoCount: Int,
-        includePhotos: Binding<Bool>,
-        includeVideos: Binding<Bool>
-    ) -> some View {
-        if model.importMediaSelection == .photosAndVideos, photoCount > 0 {
-            Toggle("Photos \(photoCount)", isOn: includePhotos)
-                .frame(width: 110, alignment: .leading)
-        } else if photoCount > 0 {
-            Label(
-                model.importMediaSelection.includes(.photo)
-                    ? "Photos \(photoCount)"
-                    : "Photos \(photoCount) excluded",
-                systemImage: model.importMediaSelection.includes(.photo) ? "photo" : "minus.circle"
-            )
-            .foregroundStyle(model.importMediaSelection.includes(.photo) ? .primary : .secondary)
-            .frame(width: 160, alignment: .leading)
-        }
-
-        if model.importMediaSelection == .photosAndVideos, videoCount > 0 {
-            Toggle("Videos \(videoCount)", isOn: includeVideos)
-                .frame(width: 110, alignment: .leading)
-        } else if videoCount > 0 {
-            Label(
-                model.importMediaSelection.includes(.video)
-                    ? "Videos \(videoCount)"
-                    : "Videos \(videoCount) excluded",
-                systemImage: model.importMediaSelection.includes(.video) ? "video" : "minus.circle"
-            )
-            .foregroundStyle(model.importMediaSelection.includes(.video) ? .primary : .secondary)
-            .frame(width: 160, alignment: .leading)
-        }
-    }
-
-    @ViewBuilder
-    private func sessionSidecarControl(
-        unsupportedCount: Int,
-        includeSidecars: Binding<Bool>
-    ) -> some View {
-        if model.importMediaSelection == .videosOnly, unsupportedCount > 0 {
-            Toggle("Include sidecars \(unsupportedCount)", isOn: includeSidecars)
-                .frame(width: 180, alignment: .leading)
-                .help("Includes non-photo/video files from the card, such as metadata, thumbnails, proxies, or camera support files.")
-        } else if unsupportedCount > 0 {
-            Text("\(unsupportedCount) non-media files skipped")
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    private func allSessionsBinding(_ keyPath: WritableKeyPath<ImportPreviewSession, Bool>) -> Binding<Bool> {
+    private func allSessionsBinding(
+        _ keyPath: WritableKeyPath<ImportPreviewSession, Bool>
+    ) -> Binding<Bool> {
         Binding {
             model.previewSessions.contains { $0[keyPath: keyPath] }
         } set: { isIncluded in
@@ -382,216 +658,14 @@ struct ImportPreviewView: View {
         }
     }
 
-    @ViewBuilder
-    private func destinationSummary(rows: [ImportPreviewRow], totals: ImportPreviewTotals) -> some View {
-        let destinations = model.previewDestinations
-        let requirements = model.previewSpaceRequirements
-        let excludedCount = rows.filter { $0.status == "Excluded" }.count
-
-        if !destinations.isEmpty || !requirements.isEmpty || (excludedCount > 0 && totals.copyFiles > 0) {
-            VStack(alignment: .leading, spacing: 8) {
-                Divider()
-
-                if !destinations.isEmpty {
-                    Text("Destinations")
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-
-                    ForEach(destinations.prefix(3)) { destination in
-                        DestinationSummaryRow(destination: destination)
-                    }
-
-                    if destinations.count > 3 {
-                        Text("\(destinations.count - 3) more destinations")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                if !requirements.isEmpty {
-                    ForEach(requirements) { requirement in
-                        AppStatusLabel(
-                            title: spaceText(for: requirement),
-                            systemImage: requirement.isSatisfied ? "checkmark.circle" : "exclamationmark.triangle",
-                            role: requirement.isSatisfied ? .neutral : .warning
-                        )
-                            .font(.caption)
-                    }
-                }
-
-                if excludedCount > 0, let summary = exclusionSummary(rows: rows) {
-                    AppStatusLabel(
-                        title: summary,
-                        systemImage: "minus.circle",
-                        role: .warning
-                    )
-                        .font(.caption)
-                }
-            }
-        }
+    private var hasSupportedMedia: Bool {
+        model.mediaContentProfile?.supportedCount ?? 1 > 0
     }
 
-    private func zeroMatchSection(rows: [ImportPreviewRow]) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label(zeroMatchTitle(rows: rows), systemImage: "info.circle")
-                .font(.subheadline)
-                .fontWeight(.semibold)
-
-            Text(zeroMatchDetail(rows: rows))
-                .font(.callout)
-                .foregroundStyle(.secondary)
-
-            VStack(alignment: .leading, spacing: 5) {
-                ForEach(zeroMatchReasons(rows: rows), id: \.self) { reason in
-                    Label(reason, systemImage: "checkmark.circle")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .padding(.top, 2)
-
-            portableReceiptOverride
-
-            HStack(spacing: 8) {
-                if canRecoverPhotos {
-                    Button {
-                        model.applyWorkflowProfile(.photoImport)
-                    } label: {
-                        Label("Import Photos", systemImage: "photo")
-                    }
-                    .buttonStyle(.bordered)
-                }
-
-                if canRecoverVideos {
-                    Button {
-                        model.applyWorkflowProfile(.footageBackup)
-                    } label: {
-                        Label("Import Videos", systemImage: "video")
-                    }
-                    .buttonStyle(.bordered)
-                }
-
-                if !rows.isEmpty {
-                    Button {
-                        showsExcludedFiles.toggle()
-                    } label: {
-                        Label(showsExcludedFiles ? "Hide Skipped Files" : "Show Skipped Files", systemImage: "list.bullet")
-                    }
-                    .buttonStyle(.bordered)
-                }
-            }
-        }
-    }
-
-    private func fileList(rows: [ImportPreviewRow], totals: ImportPreviewTotals) -> some View {
-        let displayedRows = sortedPreviewRows(rows.filter(fileFilter.includes))
-
-        return VStack(alignment: .leading, spacing: 8) {
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 10) {
-                    fileListHeading(displayedCount: displayedRows.count, totalCount: rows.count, totals: totals)
-                    Spacer()
-                    fileFilterPicker
-                }
-
-                VStack(alignment: .leading, spacing: 8) {
-                    fileListHeading(displayedCount: displayedRows.count, totalCount: rows.count, totals: totals)
-                    fileFilterPicker
-                }
-            }
-            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 6) {
-                GridRow {
-                    Text("Status").font(.caption).foregroundStyle(.secondary).frame(width: 104, alignment: .leading)
-                    Text("File").font(.caption).foregroundStyle(.secondary).frame(width: 170, alignment: .leading)
-                    Text("Kind").font(.caption).foregroundStyle(.secondary).frame(width: 62, alignment: .leading)
-                    Text("Destination").font(.caption).foregroundStyle(.secondary)
-                }
-            }
-
-            if displayedRows.isEmpty {
-                ContentUnavailableView("No Matching Files", systemImage: "line.3.horizontal.decrease.circle")
-                    .frame(maxWidth: .infinity, minHeight: 120)
-            } else {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 4) {
-                        ForEach(displayedRows) { row in
-                            ImportPreviewRowView(row: row)
-                        }
-                    }
-                    .padding(.vertical, 2)
-                }
-                .frame(maxHeight: 280)
-            }
-        }
-    }
-
-    private func fileListHeading(
-        displayedCount: Int,
-        totalCount: Int,
-        totals: ImportPreviewTotals
-    ) -> some View {
-        HStack(spacing: 8) {
-            Text(fileListCountText(displayedCount: displayedCount, totalCount: totalCount, totals: totals))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    private var fileFilterPicker: some View {
-        Picker("File Filter", selection: $fileFilter) {
-            ForEach(ImportPreviewFileFilter.allCases) { filter in
-                Text(filter.title).tag(filter)
-            }
-        }
-        .pickerStyle(.segmented)
-        .frame(minWidth: 340, idealWidth: 460, maxWidth: 460)
-    }
-
-    private func fileListCountText(
-        displayedCount: Int,
-        totalCount: Int,
-        totals: ImportPreviewTotals
-    ) -> String {
-        if fileFilter == .all {
-            if totals.skippedFiles > 0 {
-                return "\(totals.copyFiles) to copy · \(totals.skippedFiles) skipped"
-            }
-            return totalCount == 1 ? "1 file" : "\(totalCount) files"
-        }
-
-        return "\(displayedCount) of \(totalCount)"
-    }
-
-    private func sortedPreviewRows(_ rows: [ImportPreviewRow]) -> [ImportPreviewRow] {
-        rows.enumerated()
-            .sorted { lhs, rhs in
-                let lhsPriority = previewSortPriority(lhs.element)
-                let rhsPriority = previewSortPriority(rhs.element)
-                if lhsPriority != rhsPriority {
-                    return lhsPriority < rhsPriority
-                }
-                return lhs.offset < rhs.offset
-            }
-            .map(\.element)
-    }
-
-    private func previewSortPriority(_ row: ImportPreviewRow) -> Int {
-        if row.status == "Rename" || row.status == "No destination" || row.status == "Not ready" {
-            return 0
-        }
-        if row.willCopy {
-            return 1
-        }
-        if isKnownStatus(row.status) {
-            return 2
-        }
-        if row.status == "Unsupported" || row.mediaKind == .unsupported {
-            return 3
-        }
-        if row.status == "Excluded" {
-            return 4
-        }
-        return 5
+    private var showsMixedDestinationLayout: Bool {
+        model.importMediaSelection == .photosAndVideos
+            && (model.mediaContentProfile?.photoCount ?? 1) > 0
+            && (model.mediaContentProfile?.videoCount ?? 1) > 0
     }
 
     private var selectedMediaAvailabilityMessage: String? {
@@ -600,11 +674,11 @@ struct ImportPreviewView: View {
         }
         switch model.importMediaSelection {
         case .photosAndVideos:
-            return "This card does not contain both photos and videos."
+            return "This source does not contain both photos and videos."
         case .photosOnly:
-            return "No photos were found on this card."
+            return "No photos were found on this source."
         case .videosOnly:
-            return "No videos were found on this card."
+            return "No videos were found on this source."
         }
     }
 
@@ -622,11 +696,33 @@ struct ImportPreviewView: View {
         return mediaContent.videoCount > 0 && model.importMediaSelection != .videosOnly
     }
 
+    private var zeroCopyTitle: String {
+        if let selectedMediaAvailabilityMessage {
+            return selectedMediaAvailabilityMessage
+        }
+        if model.previewRows.contains(where: { $0.disposition == .excluded }) {
+            return "Current choices exclude every matching file"
+        }
+        if model.previewRows.contains(where: { $0.isKnown }) {
+            return "No new files to copy"
+        }
+        return "No files will be copied"
+    }
+
+    private var zeroCopyDetail: String {
+        if let mediaContent = model.mediaContentProfile, mediaContent.supportedCount == 0 {
+            return "No supported photo or video files were found in this source."
+        }
+        if model.previewRows.contains(where: { $0.isKnown }) {
+            return "These files are already imported, already copied, or already present at the destination."
+        }
+        return "Change the selected media type, date customization, or destinations to continue."
+    }
+
     private func mediaSelectionTitle(_ selection: ImportMediaSelection) -> String {
         guard let mediaContent = model.mediaContentProfile else {
             return selection.displayTitle
         }
-
         switch selection {
         case .photosAndVideos:
             return "Photos + Videos"
@@ -637,11 +733,24 @@ struct ImportPreviewView: View {
         }
     }
 
+    private func mediaContentSummary(_ profile: MediaContentProfile) -> String {
+        var parts: [String] = []
+        if profile.photoCount > 0 {
+            parts.append("\(profile.photoCount) photos")
+        }
+        if profile.videoCount > 0 {
+            parts.append("\(profile.videoCount) videos")
+        }
+        if profile.sidecarCount > 0 {
+            parts.append("\(profile.sidecarCount) support files")
+        }
+        return parts.isEmpty ? "No supported media" : parts.joined(separator: " · ")
+    }
+
     private func isMediaSelectionAvailable(_ selection: ImportMediaSelection) -> Bool {
         guard let mediaContent = model.mediaContentProfile else {
             return true
         }
-
         switch selection {
         case .photosAndVideos:
             return mediaContent.photoCount > 0 && mediaContent.videoCount > 0
@@ -652,132 +761,175 @@ struct ImportPreviewView: View {
         }
     }
 
-    private func zeroMatchTitle(rows: [ImportPreviewRow]) -> String {
-        if let warning = selectedMediaAvailabilityMessage {
-            return warning.replacingOccurrences(of: " on this card.", with: "")
-        }
-        if rows.contains(where: { $0.status == "Excluded" }) {
-            return "Current selection excludes every matching file"
-        }
-        if rows.contains(where: { isKnownStatus($0.status) }) {
-            return "No new files to copy"
-        }
-        return "No files will be copied"
+    private func filterTitle(_ filter: ImportPreviewFileFilter) -> String {
+        "\(filter.title) \(model.previewRows.filter(filter.includes).count)"
     }
 
-    private func zeroMatchDetail(rows: [ImportPreviewRow]) -> String {
-        if let mediaContent = model.mediaContentProfile {
-            let contents = mediaContent.contentsSentence
-            switch model.importMediaSelection {
-            case .photosOnly where mediaContent.photoCount == 0:
-                return "This card contains \(contents). Choose another media type to import."
-            case .videosOnly where mediaContent.videoCount == 0:
-                return "This card contains \(contents). Choose another media type to import."
-            case .photosAndVideos where mediaContent.supportedCount == 0:
-                return "This card contains \(contents). There are no supported photo or video files to import."
-            case .photosAndVideos:
-                return "This card contains \(contents). Choose Photos or Videos to import a single media type."
-            default:
-                break
+    private func sortedRows(_ rows: [ImportPreviewRow]) -> [ImportPreviewRow] {
+        rows.enumerated()
+            .sorted { lhs, rhs in
+                let leftPriority = lhs.element.disposition.attention.rawValue
+                let rightPriority = rhs.element.disposition.attention.rawValue
+                if leftPriority != rightPriority {
+                    return leftPriority > rightPriority
+                }
+                if lhs.element.willCopy != rhs.element.willCopy {
+                    return lhs.element.willCopy
+                }
+                return lhs.offset < rhs.offset
             }
-        }
-
-        if let summary = exclusionSummary(rows: rows) {
-            return summary
-        }
-        if rows.contains(where: { isKnownStatus($0.status) }) {
-            return "The files in this preview are already imported, already copied, or already exist at the destination."
-        }
-        return "Review the selected media type and destination settings before importing."
+            .map(\.element)
     }
 
-    private func zeroMatchReasons(rows: [ImportPreviewRow]) -> [String] {
-        var reasons: [String] = []
-        let skipped = skipBreakdown(rows: rows)
-
-        if skipped.knownFiles > 0 {
-            reasons.append("\(countText(skipped.knownFiles, singular: "file is", plural: "files are")) already known, already copied, or already present at the destination.")
+    private func destinationText(for row: ImportPreviewRow) -> String {
+        if case .rename(let originalPath, let destinationPath, _) = row.disposition {
+            return "\(URL(fileURLWithPath: originalPath).lastPathComponent) → \(URL(fileURLWithPath: destinationPath).lastPathComponent)"
         }
-        if skipped.excludedFiles > 0, let summary = exclusionSummary(rows: rows) {
-            reasons.append(summary)
-        }
-        if skipped.sidecarFiles > 0 {
-            reasons.append("\(countText(skipped.sidecarFiles, singular: "sidecar is", plural: "sidecars are")) skipped unless videos include sidecars.")
-        }
-        if let mediaContent = model.mediaContentProfile, mediaContent.supportedCount == 0 {
-            reasons.append("No supported photo or video files were found in the current source.")
-        }
-
-        return reasons.isEmpty ? ["No importable files match the current preview settings."] : reasons
+        return row.destinationPath ?? row.status
     }
 
-    private func exclusionSummary(rows: [ImportPreviewRow]) -> String? {
-        let excludedRows = rows.filter { $0.status == "Excluded" }
-        guard !excludedRows.isEmpty else {
-            return nil
+    private func destinationRootTitle(for destination: ImportPreviewDestination) -> String {
+        switch destination.root {
+        case .library:
+            return "Library"
+        case .photos:
+            return "Photos"
+        case .videos:
+            return "Videos"
+        case .other:
+            return "Destination"
         }
-
-        let photoCount = excludedRows.filter { $0.mediaKind == .photo }.count
-        let videoCount = excludedRows.filter { $0.mediaKind == .video }.count
-        let sidecarCount = excludedRows.filter { $0.mediaKind == .unsupported }.count
-        let parts = [
-            photoCount > 0 ? countText(photoCount, singular: "photo", plural: "photos") : nil,
-            videoCount > 0 ? countText(videoCount, singular: "video", plural: "videos") : nil,
-            sidecarCount > 0 ? countText(sidecarCount, singular: "sidecar", plural: "sidecars") : nil
-        ].compactMap(\.self)
-
-        guard !parts.isEmpty else {
-            return nil
-        }
-        return "\(parts.joined(separator: " and ")) excluded because \(model.importMediaSelection.displayTitle) is selected."
-    }
-
-    private func byteString(_ bytes: Int64) -> String {
-        ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
-    }
-
-    private func countText(_ count: Int, singular: String, plural: String) -> String {
-        count == 1 ? "1 \(singular)" : "\(count) \(plural)"
-    }
-
-    private func skipBreakdown(rows: [ImportPreviewRow]) -> ImportPreviewSkipBreakdown {
-        ImportPreviewSkipBreakdown(
-            knownFiles: rows.filter {
-                !$0.willCopy && isKnownStatus($0.status)
-            }.count,
-            excludedFiles: rows.filter { !$0.willCopy && $0.status == "Excluded" }.count,
-            sidecarFiles: rows.filter {
-                !$0.willCopy && $0.mediaKind == .unsupported && $0.status != "Excluded"
-            }.count
-        )
     }
 
     private func spaceText(for requirement: ImportPreviewSpaceRequirement) -> String {
-        let required = byteString(requirement.requiredBytes)
-        let available = byteString(requirement.availableBytes)
-        if requirement.isSatisfied {
-            return "\(required) needed, \(available) available at \(requirement.displayPath)"
+        let required = ByteCountFormatter.string(fromByteCount: requirement.requiredBytes, countStyle: .file)
+        guard let availableBytes = requirement.availableBytes else {
+            return "Couldn’t check available space · \(required) planned"
         }
-        return "Not enough space: \(required) needed, \(available) available at \(requirement.displayPath)"
+        let available = ByteCountFormatter.string(fromByteCount: availableBytes, countStyle: .file)
+        return requirement.isSatisfied
+            ? "\(required) needed · \(available) available"
+            : "Not enough space: \(required) needed · \(available) available"
     }
 
-    private func isKnownStatus(_ status: String) -> Bool {
-        status == "Known" || status == "Other Mac" || status == "Already exists" || status == "Copied"
+    private func visualItems(from rows: [ImportPreviewRow]) -> [ImportPreviewVisualItem] {
+        let displayedPairs = rows.compactMap { row in
+            row.visualGroupID.map { ($0, row) }
+        }
+        let displayedGroups = Dictionary(grouping: displayedPairs) { $0.0 }
+            .mapValues { $0.map(\.1) }
+        let totalPairs = model.previewRows.compactMap { row in
+            row.visualGroupID.map { ($0, row) }
+        }
+        let totalGroupCounts = Dictionary(grouping: totalPairs) { $0.0 }
+            .mapValues(\.count)
+        var handledGroups: Set<String> = []
+        var items: [ImportPreviewVisualItem] = []
+        for row in rows {
+            guard let groupID = row.visualGroupID else {
+                items.append(
+                    ImportPreviewVisualItem(id: "file:\(row.id)", rows: [row], totalGroupCount: 1)
+                )
+                continue
+            }
+            guard handledGroups.insert(groupID).inserted else {
+                continue
+            }
+            let groupedRows = displayedGroups[groupID] ?? [row]
+            let totalGroupCount = totalGroupCounts[groupID] ?? groupedRows.count
+            items.append(
+                ImportPreviewVisualItem(
+                    id: "group:\(groupID)",
+                    rows: groupedRows,
+                    totalGroupCount: totalGroupCount
+                )
+            )
+        }
+        return items
+    }
+
+    private func presentSelectedQuickLook() {
+        guard let selectedRow else {
+            return
+        }
+        presentQuickLook(for: selectedRow)
+    }
+
+    private func presentQuickLook(for row: ImportPreviewRow) {
+        let groupRows: [ImportPreviewRow]
+        if let groupID = row.visualGroupID {
+            groupRows = model.previewRows.filter { $0.visualGroupID == groupID }
+        } else {
+            groupRows = model.previewRows
+        }
+        quickLook.present(
+            urls: groupRows.map { URL(fileURLWithPath: $0.sourcePath, isDirectory: false) },
+            selectedURL: URL(fileURLWithPath: row.sourcePath, isDirectory: false)
+        )
     }
 }
 
-private struct ImportPreviewSkipBreakdown: Hashable {
-    let knownFiles: Int
-    let excludedFiles: Int
-    let sidecarFiles: Int
+private struct ImportReviewFooter: View {
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(summary)
+                    .fontWeight(.semibold)
+                Text(readinessText)
+                    .font(.caption)
+                    .foregroundStyle(model.importReadinessMessage == nil ? Color.secondary : Color.orange)
+            }
+
+            Spacer(minLength: 12)
+
+            Button {
+                model.importCurrentJob()
+            } label: {
+                Label(buttonTitle, systemImage: "square.and.arrow.down")
+            }
+            .buttonStyle(.borderedProminent)
+            .keyboardShortcut(.defaultAction)
+            .disabled(!model.canImportPlannedFiles)
+            .accessibilityHint(model.importReadinessMessage ?? "Begins copying the reviewed files")
+            .accessibilityIdentifier("import.review.copy")
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 11)
+        .background(.bar)
+        .overlay(alignment: .top) {
+            Divider()
+        }
+    }
+
+    private var summary: String {
+        let bytes = ByteCountFormatter.string(fromByteCount: model.previewTotals.copyBytes, countStyle: .file)
+        let folders = model.previewDestinations.count == 1
+            ? "1 folder"
+            : "\(model.previewDestinations.count) folders"
+        return "\(model.previewTotals.copyFiles) files · \(bytes) · \(folders)"
+    }
+
+    private var readinessText: String {
+        model.importReadinessMessage ?? "Ready to copy"
+    }
+
+    private var buttonTitle: String {
+        model.previewTotals.copyFiles == 1 ? "Copy 1 File" : "Copy \(model.previewTotals.copyFiles) Files"
+    }
+}
+
+private enum ImportPreviewMode: String {
+    case list
+    case grid
 }
 
 private enum ImportPreviewFileFilter: String, CaseIterable, Identifiable {
     case all
-    case willCopy
+    case copy
     case skipped
-    case unsupported
-    case conflicts
+    case attention
 
     var id: String { rawValue }
 
@@ -785,14 +937,12 @@ private enum ImportPreviewFileFilter: String, CaseIterable, Identifiable {
         switch self {
         case .all:
             return "All"
-        case .willCopy:
-            return "Will Copy"
+        case .copy:
+            return "Copy"
         case .skipped:
             return "Skipped"
-        case .unsupported:
-            return "Unsupported"
-        case .conflicts:
-            return "Conflicts"
+        case .attention:
+            return "Attention"
         }
     }
 
@@ -800,92 +950,350 @@ private enum ImportPreviewFileFilter: String, CaseIterable, Identifiable {
         switch self {
         case .all:
             return true
-        case .willCopy:
+        case .copy:
             return row.willCopy
         case .skipped:
-            return !row.willCopy && row.status != "Unsupported" && row.mediaKind != .unsupported
-        case .unsupported:
-            return !row.willCopy && (row.status == "Unsupported" || row.mediaKind == .unsupported)
-        case .conflicts:
-            return row.status == "Rename"
+            return !row.willCopy
+        case .attention:
+            return row.disposition.attention >= .attention
         }
     }
 }
 
-private struct DestinationSummaryRow: View {
+private struct PreviewStatusBadge: View {
+    let row: ImportPreviewRow
+
+    var body: some View {
+        Label(row.status, systemImage: systemImage)
+            .font(.caption)
+            .foregroundStyle(color)
+            .lineLimit(1)
+            .accessibilityLabel("Status, \(row.status)")
+    }
+
+    private var systemImage: String {
+        switch row.disposition.attention {
+        case .blocking:
+            return "exclamationmark.triangle.fill"
+        case .attention:
+            return "exclamationmark.circle"
+        case .informational:
+            return "minus.circle"
+        case .normal:
+            return row.willCopy ? "arrow.down.circle" : "checkmark.circle"
+        }
+    }
+
+    private var color: Color {
+        switch row.disposition.attention {
+        case .blocking:
+            return .red
+        case .attention:
+            return .orange
+        case .informational:
+            return .secondary
+        case .normal:
+            return row.willCopy ? .green : .secondary
+        }
+    }
+}
+
+private struct DestinationTreeRow: View {
     let destination: ImportPreviewDestination
+    let rootTitle: String
 
     var body: some View {
         HStack(alignment: .top, spacing: 9) {
             Image(systemName: "folder")
                 .foregroundStyle(.secondary)
                 .frame(width: 16)
-
             VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 8) {
-                    Text(destination.title)
-                        .fontWeight(.medium)
-                        .lineLimit(1)
-                    Text("\(destination.fileCount) files, \(ByteCountFormatter.string(fromByteCount: destination.byteCount, countStyle: .file))")
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                    Spacer(minLength: 0)
-                }
-
-                Text(destination.path)
+                Text(rootTitle)
+                    .fontWeight(.medium)
+                Text("└─ \(relativePath) · \(destination.fileCount) files · \(bytes)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
-                    .textSelection(.enabled)
+                    .help(destination.path)
             }
         }
-        .font(.caption)
-        .padding(.vertical, 2)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(rootTitle), \(relativePath), \(destination.fileCount) files, \(bytes)")
+    }
+
+    private var relativePath: String {
+        destination.relativePath.isEmpty ? "Root" : destination.relativePath
+    }
+
+    private var bytes: String {
+        ByteCountFormatter.string(fromByteCount: destination.byteCount, countStyle: .file)
     }
 }
 
-private struct ImportPreviewRowView: View {
-    let row: ImportPreviewRow
+private struct ImportPreviewVisualItem: Identifiable {
+    let id: String
+    let rows: [ImportPreviewRow]
+    let totalGroupCount: Int
 
-    private var destinationText: String {
-        if let destinationPath = row.destinationPath {
-            return destinationPath
+    var primaryRow: ImportPreviewRow {
+        if rows.first?.visualGroupKind == .rawJPEG {
+            return rows.first(where: { ["jpg", "jpeg"].contains(URL(fileURLWithPath: $0.filename).pathExtension.lowercased()) })
+                ?? rows[0]
         }
-        return row.willCopy ? "Destination pending" : row.status
+        if rows.first?.visualGroupKind == .videoSidecars {
+            return rows.first(where: { $0.mediaKind == .video }) ?? rows[0]
+        }
+        return rows[0]
     }
+
+    var title: String {
+        if rows.first?.visualGroupKind == .rawJPEG {
+            return URL(fileURLWithPath: primaryRow.filename).deletingPathExtension().lastPathComponent
+        }
+        return primaryRow.filename
+    }
+
+    var subtitle: String {
+        switch rows.first?.visualGroupKind {
+        case .rawJPEG:
+            return rows.count == totalGroupCount
+                ? "RAW + JPEG · \(rows.count) files"
+                : "\(primaryRow.mediaKind.displayTitle) · \(rows.count) of \(totalGroupCount) paired files"
+        case .videoSidecars:
+            if rows.count == totalGroupCount {
+                return "Video + \(max(0, rows.count - 1)) sidecars"
+            }
+            return "\(primaryRow.mediaKind.displayTitle) · \(rows.count) of \(totalGroupCount) grouped files"
+        case nil:
+            return primaryRow.mediaKind.displayTitle
+        }
+    }
+
+    var status: String {
+        let copyCount = rows.filter(\.willCopy).count
+        return ImportPreviewGroupDispositionSummary(
+            copyCount: copyCount,
+            skippedCount: rows.count - copyCount
+        ).mixedStatusTitle ?? primaryRow.status
+    }
+}
+
+private struct ImportPreviewGridCell: View {
+    let item: ImportPreviewVisualItem
+    let isSelected: Bool
+    let thumbnailProvider: ImportThumbnailProvider
+
+    @State private var image: NSImage?
+    @State private var requestID: UUID?
+    @State private var durationText: String?
 
     var body: some View {
-        Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 6) {
-            GridRow {
-                Label(row.status, systemImage: row.willCopy ? "arrow.down.circle" : "minus.circle")
-                    .labelStyle(.titleAndIcon)
-                    .foregroundStyle(row.willCopy ? .primary : .secondary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .frame(width: 104, alignment: .leading)
+        VStack(alignment: .leading, spacing: 7) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 7)
+                    .fill(Color.secondary.opacity(0.10))
 
-                Text(row.filename)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .frame(width: 170, alignment: .leading)
+                if let image {
+                    Image(nsImage: image)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .clipped()
+                } else {
+                    Image(systemName: placeholderImage)
+                        .font(.system(size: 30))
+                        .foregroundStyle(.secondary)
+                }
 
-                Text(row.mediaKind.displayTitle)
-                    .foregroundStyle(.secondary)
-                    .frame(width: 62, alignment: .leading)
+                if item.primaryRow.mediaKind == .video {
+                    Image(systemName: "play.circle.fill")
+                        .font(.title)
+                        .symbolRenderingMode(.palette)
+                        .foregroundStyle(.white, .black.opacity(0.45))
+                }
 
-                Text(destinationText)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .foregroundStyle(row.willCopy ? .primary : .secondary)
-                    .help(row.destinationPath ?? row.sourcePath)
+                VStack {
+                    HStack {
+                        Spacer()
+                        Text(item.status)
+                            .font(.caption2)
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(.ultraThinMaterial, in: Capsule())
+                    }
+                    Spacer()
+                    if let durationText {
+                        HStack {
+                            Spacer()
+                            Text(durationText)
+                                .font(.caption2)
+                                .monospacedDigit()
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 3)
+                                .background(.ultraThinMaterial, in: Capsule())
+                        }
+                    }
+                }
+                .padding(6)
             }
+            .aspectRatio(4 / 3, contentMode: .fit)
+            .clipShape(RoundedRectangle(cornerRadius: 7))
+
+            Text(item.title)
+                .font(.callout)
+                .fontWeight(.medium)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Text(item.subtitle)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
         }
-        .font(.callout)
+        .padding(8)
+        .background(
+            isSelected ? Color.accentColor.opacity(0.14) : Color.clear,
+            in: RoundedRectangle(cornerRadius: 9)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 9)
+                .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 1)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityLabel)
+        .onAppear {
+            resetThumbnailRequest()
+        }
+        .onChange(of: item.primaryRow.sourcePath) {
+            resetThumbnailRequest()
+        }
+        .onDisappear {
+            thumbnailProvider.cancel(requestID)
+            requestID = nil
+        }
+        .task(id: item.primaryRow.sourcePath) {
+            durationText = nil
+            guard item.primaryRow.mediaKind == .video else {
+                return
+            }
+            durationText = await thumbnailProvider.durationText(for: sourceURL)
+        }
+    }
+
+    private var sourceURL: URL {
+        URL(fileURLWithPath: item.primaryRow.sourcePath, isDirectory: false)
+    }
+
+    private var placeholderImage: String {
+        switch item.primaryRow.mediaKind {
+        case .photo:
+            return "photo"
+        case .video:
+            return "video"
+        case .unsupported:
+            return "doc"
+        }
+    }
+
+    private var accessibilityLabel: String {
+        "\(item.title), \(item.subtitle), \(item.status)"
+    }
+
+    private func startThumbnailRequest() {
+        requestID = thumbnailProvider.requestThumbnail(
+            for: sourceURL,
+            modificationDate: item.primaryRow.modificationDateString,
+            size: CGSize(width: 240, height: 180),
+            scale: NSScreen.main?.backingScaleFactor ?? 2
+        ) { thumbnail in
+            image = thumbnail
+        }
+    }
+
+    private func resetThumbnailRequest() {
+        thumbnailProvider.cancel(requestID)
+        requestID = nil
+        image = nil
+        durationText = nil
+        startThumbnailRequest()
     }
 }
 
-private extension ImportMediaSelection {
+private struct ImportFileInspector: View {
+    let row: ImportPreviewRow
+    let quickLookAction: () -> Void
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                Text(row.filename)
+                    .font(.headline)
+                    .textSelection(.enabled)
+                PreviewStatusBadge(row: row)
+
+                inspectorField("Type", value: row.mediaKind.displayTitle)
+                inspectorField("Capture Date", value: row.date)
+                inspectorField(
+                    "Size",
+                    value: ByteCountFormatter.string(fromByteCount: row.size, countStyle: .file)
+                )
+                inspectorField("Source", value: row.sourcePath)
+                inspectorField("Destination", value: row.destinationPath ?? "No destination")
+
+                if case .rename(let originalPath, let destinationPath, let reason) = row.disposition {
+                    inspectorField("Original Name", value: URL(fileURLWithPath: originalPath).lastPathComponent)
+                    inspectorField("Resolved Name", value: URL(fileURLWithPath: destinationPath).lastPathComponent)
+                    if let reason {
+                        inspectorField("Reason", value: reason)
+                    }
+                }
+
+                Button {
+                    quickLookAction()
+                } label: {
+                    Label("Quick Look", systemImage: "eye")
+                }
+                .buttonStyle(.bordered)
+            }
+            .padding()
+        }
+        .navigationTitle("File Details")
+    }
+
+    private func inspectorField(_ title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.callout)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+private extension ImportPreviewRow {
+    var isPortableKnown: Bool {
+        if case .known(let source) = disposition {
+            return source == .portableLedger
+        }
+        return false
+    }
+
+    var isKnown: Bool {
+        switch disposition {
+        case .known, .alreadyExists, .copied:
+            return true
+        default:
+            return false
+        }
+    }
+}
+
+extension ImportMediaSelection {
     var displayTitle: String {
         switch self {
         case .photosAndVideos:
@@ -898,7 +1306,7 @@ private extension ImportMediaSelection {
     }
 }
 
-private extension ImportDestinationLayout {
+extension ImportDestinationLayout {
     var displayTitle: String {
         switch self {
         case .singleLibrary:
@@ -911,32 +1319,18 @@ private extension ImportDestinationLayout {
     }
 }
 
-private extension ImportFolderGrouping {
+extension ImportFolderGrouping {
     var displayTitle: String {
         switch self {
         case .byDay:
             return "By Capture Date"
         case .oneShootFolder:
-            return "Single Shoot"
+            return "One Shoot"
         }
     }
 }
 
-private extension MediaContentProfile {
-    var cardContentsText: String {
-        "Card contains: \(contentsSentence)"
-    }
-
-    var contentsSentence: String {
-        "\(countText(photoCount, singular: "photo", plural: "photos")) · \(countText(videoCount, singular: "video", plural: "videos")) · \(countText(sidecarCount, singular: "sidecar", plural: "sidecars"))"
-    }
-
-    private func countText(_ count: Int, singular: String, plural: String) -> String {
-        count == 1 ? "1 \(singular)" : "\(count) \(plural)"
-    }
-}
-
-private extension MediaKind {
+extension MediaKind {
     var displayTitle: String {
         switch self {
         case .photo:
@@ -944,7 +1338,7 @@ private extension MediaKind {
         case .video:
             return "Video"
         case .unsupported:
-            return "Sidecar"
+            return "Other"
         }
     }
 }

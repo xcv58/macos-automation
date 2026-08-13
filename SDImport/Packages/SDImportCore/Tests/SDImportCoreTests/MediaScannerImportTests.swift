@@ -1116,6 +1116,7 @@ struct MediaScannerImportTests {
         let filesAfterRetry = try fixture.jobRepository.fetchJobFiles(jobID: "job-partial-retry")
         let copiedAfterRetry = try #require(filesAfterRetry.first { $0.filename == "IMG_COPIED.JPG" })
         let failedAfterRetry = try #require(filesAfterRetry.first { $0.filename == "IMG_FAILED.JPG" })
+        let receiptTotals = ImportReceiptTotals(files: filesAfterRetry)
         let maybeJob = try fixture.jobRepository.fetchJob(id: "job-partial-retry")
         let job = try #require(maybeJob)
 
@@ -1124,6 +1125,9 @@ struct MediaScannerImportTests {
         #expect(copiedAfterRetry.finalDestinationPath == copiedDestinationBeforeRetry)
         #expect(copiedAfterRetry.completedAt == copiedCompletedAtBeforeRetry)
         #expect(failedAfterRetry.copyStatus == .copied)
+        #expect(receiptTotals.copiedFiles == 2)
+        #expect(receiptTotals.copiedBytes == Int64(copiedBytes.count + failedBytes.count))
+        #expect(receiptTotals.failedFiles == 0)
         #expect(job.importedFiles == 2)
         #expect(job.failedFiles == 0)
         #expect(job.status == .imported)
@@ -1165,6 +1169,66 @@ struct MediaScannerImportTests {
         #expect(job.status == .cancelled)
         #expect(file.copyStatus == .pending)
         #expect(FileManager.default.fileExists(atPath: partPath) == false)
+    }
+
+    @Test("receipt totals remain cumulative after cancelling between files and retrying")
+    func retryAfterPartialCancellationHasCumulativeReceiptTotals() throws {
+        let fixture = try Fixture()
+        let firstSource = fixture.mountURL.appendingPathComponent("A_FIRST.JPG")
+        let secondSource = fixture.mountURL.appendingPathComponent("B_SECOND.JPG")
+        let firstBytes = Data(repeating: 1, count: 2 * 1024 * 1024)
+        let secondBytes = Data(repeating: 2, count: 2 * 1024 * 1024)
+        try fixture.writeFile(firstSource, bytes: firstBytes)
+        try fixture.writeFile(secondSource, bytes: secondBytes)
+
+        _ = try fixture.scanner.scan(
+            fixture.scanRequest(jobID: "job-partial-cancel-retry")
+        )
+
+        var shouldCancel = false
+        do {
+            _ = try fixture.importEngine.importFiles(
+                jobID: "job-partial-cancel-retry",
+                onProgress: { progress in
+                    if progress.doneFiles == 1 {
+                        shouldCancel = true
+                    }
+                },
+                shouldCancel: {
+                    shouldCancel
+                }
+            )
+            Issue.record("import should have been cancelled after its first file")
+        } catch SDImportError.cancelled {
+        }
+
+        let filesAfterCancellation = try fixture.jobRepository.fetchJobFiles(
+            jobID: "job-partial-cancel-retry"
+        )
+        #expect(filesAfterCancellation.filter { $0.copyStatus == .copied }.count == 1)
+        #expect(filesAfterCancellation.filter { $0.copyStatus == .pending }.count == 1)
+
+        let retryResult = try fixture.importEngine.importFiles(
+            jobID: "job-partial-cancel-retry"
+        )
+        let filesAfterRetry = try fixture.jobRepository.fetchJobFiles(
+            jobID: "job-partial-cancel-retry"
+        )
+        let receiptTotals = ImportReceiptTotals(files: filesAfterRetry)
+
+        #expect(retryResult.importedFiles == 1)
+        #expect(receiptTotals.copiedFiles == 2)
+        #expect(receiptTotals.copiedBytes == Int64(firstBytes.count + secondBytes.count))
+        #expect(receiptTotals.skippedFiles == 0)
+        #expect(receiptTotals.failedFiles == 0)
+        #expect(
+            filesAfterRetry.allSatisfy { file in
+                guard let destination = file.plannedDestinationPath else {
+                    return false
+                }
+                return FileManager.default.fileExists(atPath: destination + ".part") == false
+            }
+        )
     }
 
     @Test("recovery marks interrupted import failed and removes known part files")

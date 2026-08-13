@@ -27,6 +27,9 @@ struct SettingsView: View {
             .frame(maxWidth: 860, maxHeight: .infinity, alignment: .top)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .navigationTitle("Settings")
+            .onAppear {
+                model.validateDefaultPaths()
+            }
             .onDisappear {
                 Task {
                     await model.validateAndSaveDestinationSettings()
@@ -54,7 +57,10 @@ struct SettingsView: View {
     }
 
     private var destinationPathInputs: DestinationPathInputs {
-        DestinationPathInputs(photos: model.photosPath, videos: model.videosPath)
+        DestinationPathInputs(
+            photos: model.importDefaults.photosPath,
+            videos: model.importDefaults.videosPath
+        )
     }
 
     private var mainWindowSettings: some View {
@@ -91,9 +97,9 @@ struct SettingsView: View {
                     VStack(spacing: 0) {
                         FolderSettingRow(
                             title: "Photos",
-                            path: $model.photosPath,
-                            validation: model.photosValidation,
-                            chooseAction: model.choosePhotosFolder,
+                            path: $model.importDefaults.photosPath,
+                            validation: model.defaultPhotosValidation,
+                            chooseAction: model.chooseDefaultPhotosFolder,
                             revealAction: model.revealPhotosFolder
                         )
 
@@ -102,9 +108,9 @@ struct SettingsView: View {
 
                         FolderSettingRow(
                             title: "Videos",
-                            path: $model.videosPath,
-                            validation: model.videosValidation,
-                            chooseAction: model.chooseVideosFolder,
+                            path: $model.importDefaults.videosPath,
+                            validation: model.defaultVideosValidation,
+                            chooseAction: model.chooseDefaultVideosFolder,
                             revealAction: model.revealVideosFolder
                         )
                     }

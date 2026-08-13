@@ -5,9 +5,12 @@ struct HistoryDetailView: View {
     @EnvironmentObject private var model: AppModel
     @State private var isShowingForgetConfirmation = false
     @State private var fileFilter: HistoryFileFilter = .all
+    @State private var filePage = 0
 
     let job: ImportJob?
     let files: [JobFileRecord]
+
+    private static let fileBatchSize = 100
 
     private var filteredFiles: [JobFileRecord] {
         files.filter(fileFilter.includes)
@@ -16,6 +19,9 @@ struct HistoryDetailView: View {
     var body: some View {
         if let job {
             detail(job)
+                .onChange(of: job.id) {
+                    filePage = 0
+                }
         } else {
             ContentUnavailableView("No Job Selected", systemImage: "clock.arrow.circlepath")
                 .frame(maxWidth: .infinity, minHeight: 220)
@@ -131,10 +137,19 @@ struct HistoryDetailView: View {
 
     private var fileSection: some View {
         let files = filteredFiles
+        let lastPage = max(0, (files.count - 1) / Self.fileBatchSize)
+        let displayedPage = min(filePage, lastPage)
+        let pageStart = displayedPage * Self.fileBatchSize
+        let visibleFiles = Array(files.dropFirst(pageStart).prefix(Self.fileBatchSize))
         let totalCount = self.files.count
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
-                fileHeading(displayedCount: files.count, totalCount: totalCount)
+                fileHeading(
+                    filteredCount: files.count,
+                    visibleCount: visibleFiles.count,
+                    firstVisibleIndex: files.isEmpty ? 0 : pageStart + 1,
+                    totalCount: totalCount
+                )
                 Spacer()
                 fileFilterControl
             }
@@ -144,33 +159,68 @@ struct HistoryDetailView: View {
                     .frame(maxWidth: .infinity, minHeight: 140)
             } else {
                 List {
-                    ForEach(files) { file in
-                        HistoryFileRow(file: file)
+                    ForEach(visibleFiles) { file in
+                        HistoryFileRow(file: file) { path in
+                            model.reveal(path: path)
+                        }
                             .listRowInsets(EdgeInsets(top: 3, leading: 10, bottom: 3, trailing: 10))
                             .listRowSeparator(.visible)
                     }
+
                 }
                 .listStyle(.inset)
                 .environment(\.defaultMinListRowHeight, 1)
                 .frame(minHeight: 180, maxHeight: .infinity)
+
+                if files.count > Self.fileBatchSize {
+                    HStack(spacing: 10) {
+                        Button("Previous") {
+                            filePage = max(0, displayedPage - 1)
+                        }
+                        .disabled(displayedPage == 0)
+
+                        Text("Page \(displayedPage + 1) of \(lastPage + 1)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        Button("Next") {
+                            filePage = min(lastPage, displayedPage + 1)
+                        }
+                        .disabled(displayedPage == lastPage)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .buttonStyle(.bordered)
+                }
             }
         }
         .frame(maxHeight: .infinity, alignment: .top)
     }
 
-    private func fileHeading(displayedCount: Int, totalCount: Int) -> some View {
+    private func fileHeading(
+        filteredCount: Int,
+        visibleCount: Int,
+        firstVisibleIndex: Int,
+        totalCount: Int
+    ) -> some View {
         HStack(spacing: 8) {
             Text("Files")
                 .font(.headline)
                 .foregroundStyle(.primary)
-            Text(fileCountText(displayedCount: displayedCount, totalCount: totalCount))
+            Text(
+                fileCountText(
+                    filteredCount: filteredCount,
+                    visibleCount: visibleCount,
+                    firstVisibleIndex: firstVisibleIndex,
+                    totalCount: totalCount
+                )
+            )
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
     }
 
     private var fileFilterControl: some View {
-        Picker("File Filter", selection: $fileFilter) {
+        Picker("File Filter", selection: fileFilterBinding) {
             ForEach(HistoryFileFilter.allCases) { filter in
                 Text(filter.title).tag(filter)
             }
@@ -181,11 +231,30 @@ struct HistoryDetailView: View {
         .accessibilityLabel("File filter")
     }
 
-    private func fileCountText(displayedCount: Int, totalCount: Int) -> String {
-        if displayedCount == totalCount {
+    private func fileCountText(
+        filteredCount: Int,
+        visibleCount: Int,
+        firstVisibleIndex: Int,
+        totalCount: Int
+    ) -> String {
+        if filteredCount > Self.fileBatchSize {
+            let filteredSuffix = filteredCount == totalCount ? "" : " matching"
+            let lastVisibleIndex = firstVisibleIndex + visibleCount - 1
+            return "Showing \(firstVisibleIndex)–\(lastVisibleIndex) of \(filteredCount)\(filteredSuffix)"
+        }
+        if filteredCount == totalCount {
             return totalCount == 1 ? "1 file" : "\(totalCount) files"
         }
-        return "\(displayedCount) of \(totalCount)"
+        return "\(filteredCount) of \(totalCount)"
+    }
+
+    private var fileFilterBinding: Binding<HistoryFileFilter> {
+        Binding {
+            fileFilter
+        } set: { filter in
+            filePage = 0
+            fileFilter = filter
+        }
     }
 }
 
@@ -225,9 +294,8 @@ private enum HistoryFileFilter: String, CaseIterable, Identifiable {
 }
 
 private struct HistoryFileRow: View {
-    @EnvironmentObject private var model: AppModel
-
     let file: JobFileRecord
+    let revealAction: (String) -> Void
 
     private var destinationPath: String? {
         file.finalDestinationPath ?? file.plannedDestinationPath
@@ -246,6 +314,7 @@ private struct HistoryFileRow: View {
             Image(systemName: statusImage)
                 .foregroundStyle(statusColor)
                 .frame(width: 18)
+                .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
@@ -265,7 +334,6 @@ private struct HistoryFileRow: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
-                        .textSelection(.enabled)
 
                     Spacer(minLength: 8)
                     Text(Self.bytes(file.size))
@@ -284,12 +352,14 @@ private struct HistoryFileRow: View {
                         .lineLimit(2)
                 }
             }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(accessibilityLabel)
 
             Spacer(minLength: 0)
 
             if let revealPath {
                 Button {
-                    model.reveal(path: revealPath)
+                    revealAction(revealPath)
                 } label: {
                     Label("Reveal", systemImage: "arrow.up.right.square")
                 }
@@ -339,5 +409,21 @@ private struct HistoryFileRow: View {
 
     private static func bytes(_ value: Int64) -> String {
         ByteCountFormatter.string(fromByteCount: value, countStyle: .file)
+    }
+
+    private var accessibilityLabel: String {
+        var parts = [
+            file.filename,
+            statusTitle,
+            Self.bytes(file.size),
+            detailPath
+        ]
+        if let completedAt = file.completedAt {
+            parts.append(completedAt.formatted(date: .abbreviated, time: .shortened))
+        }
+        if let error = file.error, !error.isEmpty {
+            parts.append(error)
+        }
+        return parts.joined(separator: ", ")
     }
 }

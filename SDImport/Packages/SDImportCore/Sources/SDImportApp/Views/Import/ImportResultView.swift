@@ -14,8 +14,8 @@ struct ImportResultView: View {
         model.selectedJobFiles.filter { $0.copyStatus == .copied }
     }
 
-    private var copiedBytes: Int64 {
-        copiedFiles.reduce(Int64(0)) { $0 + $1.size }
+    private var totals: ImportReceiptTotals {
+        ImportReceiptTotals(files: model.selectedJobFiles)
     }
 
     private var folderSummaries: [ReceiptFolderSummary] {
@@ -41,10 +41,10 @@ struct ImportResultView: View {
     }
 
     private var copyStatusTitle: String {
-        if result.importedFiles == 0 {
+        if copiedFiles.isEmpty {
             return "No Copies"
         }
-        return result.failedFiles == 0 ? "Copied" : "Copied with Errors"
+        return totals.failedFiles == 0 ? "Copied" : "Copied with Errors"
     }
 
     var body: some View {
@@ -60,10 +60,10 @@ struct ImportResultView: View {
             }
 
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), spacing: 12)], alignment: .leading, spacing: 12) {
-                ReceiptMetric(title: "Copied", value: "\(result.importedFiles)")
-                ReceiptMetric(title: "Size", value: Self.bytes(copiedBytes))
-                ReceiptMetric(title: "Skipped", value: "\(result.skippedFiles)")
-                ReceiptMetric(title: "Failed", value: "\(result.failedFiles)")
+                ReceiptMetric(title: "Copied", value: "\(totals.copiedFiles)")
+                ReceiptMetric(title: "Size", value: Self.bytes(totals.copiedBytes))
+                ReceiptMetric(title: "Skipped", value: "\(totals.skippedFiles)")
+                ReceiptMetric(title: "Failed", value: "\(totals.failedFiles)")
             }
 
             if let warning = result.portableReceiptWarning {
@@ -123,17 +123,17 @@ struct ImportResultView: View {
     }
 
     private var copyStatusRole: AppStatusLabel.Role {
-        if result.failedFiles > 0 {
+        if totals.failedFiles > 0 {
             return .error
         }
-        return result.importedFiles > 0 ? .success : .neutral
+        return copiedFiles.isEmpty ? .neutral : .success
     }
 
     private var copyStatusImage: String {
-        if result.failedFiles > 0 {
+        if totals.failedFiles > 0 {
             return "exclamationmark.triangle"
         }
-        return result.importedFiles > 0 ? "checkmark.seal" : "minus.circle"
+        return copiedFiles.isEmpty ? "minus.circle" : "checkmark.seal"
     }
 
     private var receiptButtons: some View {
@@ -159,7 +159,13 @@ struct ImportResultView: View {
             Button {
                 model.selection = .history
             } label: {
-                Label("View Imported Files", systemImage: "list.bullet.rectangle")
+                Label("Open in History", systemImage: "list.bullet.rectangle")
+            }
+
+            Button {
+                model.importAnotherCard()
+            } label: {
+                Label("Import Another Card", systemImage: "externaldrive.badge.plus")
             }
         }
     }

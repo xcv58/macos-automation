@@ -3,6 +3,7 @@ import SwiftUI
 
 struct ImportProgressPanel: View {
     let progress: ImportProgress
+    let cancelAction: () -> Void
 
     private var fractionComplete: Double {
         min(1, max(0, progress.percent / 100))
@@ -26,6 +27,17 @@ struct ImportProgressPanel: View {
 
             ProgressView(value: fractionComplete)
                 .progressViewStyle(.linear)
+
+            HStack {
+                Spacer()
+                Button(role: .cancel) {
+                    cancelAction()
+                } label: {
+                    Label("Cancel Copy", systemImage: "xmark.circle")
+                }
+                .buttonStyle(.bordered)
+                .accessibilityIdentifier("import.cancel.copy")
+            }
 
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), spacing: 12)], alignment: .leading, spacing: 12) {
                 ProgressMetric(title: "Data", value: copiedText)
