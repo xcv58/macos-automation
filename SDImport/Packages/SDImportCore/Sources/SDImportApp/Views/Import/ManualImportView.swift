@@ -373,16 +373,27 @@ private extension String {
     }
 }
 
+enum ImportFormLayout {
+    static let labelWidth: CGFloat = 92
+    static let columnSpacing: CGFloat = 14
+    static let minimumControlWidth: CGFloat = 180
+    static let compactSegmentedControlWidth: CGFloat = 420
+}
+
 struct ImportDestinationFields: View {
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
-        Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 12) {
+        Grid(
+            alignment: .leading,
+            horizontalSpacing: ImportFormLayout.columnSpacing,
+            verticalSpacing: 12
+        ) {
             GridRow {
                 Text("Shoot")
                     .foregroundStyle(.secondary)
-                    .frame(width: 92, alignment: .leading)
-                ShootNameField(name: $model.location, width: 260)
+                    .frame(width: ImportFormLayout.labelWidth, alignment: .leading)
+                ShootNameField(name: $model.location)
             }
 
             switch model.importMediaSelection {
@@ -392,7 +403,7 @@ struct ImportDestinationFields: View {
                     GridRow {
                         Text("Library")
                             .foregroundStyle(.secondary)
-                            .frame(width: 92, alignment: .leading)
+                            .frame(width: ImportFormLayout.labelWidth, alignment: .leading)
                         FolderField(
                             title: "Library",
                             path: $model.photosPath,
@@ -406,7 +417,7 @@ struct ImportDestinationFields: View {
                     GridRow {
                         Text("Photos")
                             .foregroundStyle(.secondary)
-                            .frame(width: 92, alignment: .leading)
+                            .frame(width: ImportFormLayout.labelWidth, alignment: .leading)
                         FolderField(
                             title: "Photos",
                             path: $model.photosPath,
@@ -420,7 +431,7 @@ struct ImportDestinationFields: View {
                     GridRow {
                         Text("Videos")
                             .foregroundStyle(.secondary)
-                            .frame(width: 92, alignment: .leading)
+                            .frame(width: ImportFormLayout.labelWidth, alignment: .leading)
                         FolderField(
                             title: "Videos",
                             path: $model.videosPath,
@@ -437,7 +448,7 @@ struct ImportDestinationFields: View {
                 GridRow {
                     Text("Photos")
                         .foregroundStyle(.secondary)
-                        .frame(width: 92, alignment: .leading)
+                        .frame(width: ImportFormLayout.labelWidth, alignment: .leading)
                     FolderField(
                         title: "Photos",
                         path: $model.photosPath,
@@ -451,7 +462,7 @@ struct ImportDestinationFields: View {
                 GridRow {
                     Text("Videos")
                         .foregroundStyle(.secondary)
-                        .frame(width: 92, alignment: .leading)
+                        .frame(width: ImportFormLayout.labelWidth, alignment: .leading)
                     FolderField(
                         title: "Videos",
                         path: $model.videosPath,
@@ -464,6 +475,7 @@ struct ImportDestinationFields: View {
             }
         }
         .gridColumnAlignment(.leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -661,7 +673,10 @@ private struct FolderField: View {
                 TextField("\(title) folder path", text: $path)
                     .textFieldStyle(.roundedBorder)
                     .lineLimit(1)
-                    .frame(minWidth: 180, maxWidth: 420)
+                    .frame(
+                        minWidth: ImportFormLayout.minimumControlWidth,
+                        maxWidth: .infinity
+                    )
 
                 Menu {
                     if recentChoices.isEmpty {
@@ -702,6 +717,7 @@ private struct FolderField: View {
                 }
                 .help("Choose recent \(title.lowercased()) folder")
                 .accessibilityLabel("Choose recent \(title.lowercased()) folder")
+                .fixedSize()
                 .sheet(isPresented: $isManagingRecentFolders) {
                     RecentPathManagementSheet(
                         title: "Recent \(title) Folders",
@@ -718,7 +734,9 @@ private struct FolderField: View {
                 }
                 .help("Choose \(title.lowercased()) folder")
                 .accessibilityLabel("Choose \(title.lowercased()) folder")
+                .fixedSize()
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             ValidationStatusView(result: validation)
         }
