@@ -5,7 +5,6 @@ struct ShootNameField: View {
     @EnvironmentObject private var model: AppModel
 
     @Binding var name: String
-    var width: CGFloat = 260
     var showsQuickPicks = true
 
     private var suggestions: [RecentShootNameChoice] {
@@ -17,7 +16,10 @@ struct ShootNameField: View {
             HStack(spacing: 8) {
                 TextField("Shoot name", text: $name)
                     .textFieldStyle(.roundedBorder)
-                    .frame(width: width)
+                    .frame(
+                        minWidth: ImportFormLayout.minimumControlWidth,
+                        maxWidth: .infinity
+                    )
                     .onSubmit {
                         model.savePreferences()
                     }
@@ -40,7 +42,9 @@ struct ShootNameField: View {
                 }
                 .help("Choose recent shoot name")
                 .accessibilityLabel("Choose recent shoot name")
+                .fixedSize()
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             if showsQuickPicks, !suggestions.isEmpty {
                 HStack(spacing: 6) {
@@ -62,6 +66,7 @@ struct ShootNameField: View {
                 .font(.caption)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func menuTitle(for suggestion: RecentShootNameChoice) -> String {

@@ -45,25 +45,28 @@ struct ImportPreviewView: View {
     }
 
     var body: some View {
-        AppPage(maxContentWidth: .infinity) {
-            LazyVStack(
-                alignment: .leading,
-                spacing: 14,
-                pinnedViews: [.sectionHeaders]
-            ) {
-                reviewHeading
-                ImportSourceSummaryView(
-                    allowsChange: true,
-                    allowsRescan: true,
-                    compact: true
-                )
+        VStack(spacing: 0) {
+            reviewHeader
 
-                if model.previewTotals.copyFiles == 0 {
-                    zeroCopyCard
-                } else {
-                    importPlanCard
+            AppPage(maxContentWidth: .infinity) {
+                LazyVStack(
+                    alignment: .leading,
+                    spacing: 14,
+                    pinnedViews: [.sectionHeaders]
+                ) {
+                    ImportSourceSummaryView(
+                        allowsChange: true,
+                        allowsRescan: true,
+                        compact: true
+                    )
+
+                    if model.previewTotals.copyFiles == 0 {
+                        zeroCopyCard
+                    } else {
+                        importPlanCard
+                    }
+                    fileBrowser
                 }
-                fileBrowser
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -104,16 +107,29 @@ struct ImportPreviewView: View {
         }
     }
 
-    private var reviewHeading: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Review import")
-                .font(.title2)
-                .fontWeight(.semibold)
-                .accessibilityFocused($reviewHeadingIsFocused)
-                .accessibilityIdentifier("import.phase.review.heading")
-            Text("Confirm what will be copied and where it will go.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
+    private var reviewHeader: some View {
+        HStack(spacing: 16) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Review import")
+                    .font(.title2)
+                    .fontWeight(.semibold)
+                    .accessibilityFocused($reviewHeadingIsFocused)
+                    .accessibilityIdentifier("import.phase.review.heading")
+                Text("Confirm what will be copied and where it will go.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer(minLength: 12)
+
+            ImportReviewPrimaryAction()
+                .environmentObject(model)
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 12)
+        .background(AppSurfacePalette.contentBackground)
+        .overlay(alignment: .bottom) {
+            Divider()
         }
     }
 
@@ -199,7 +215,10 @@ struct ImportPreviewView: View {
 
     private var importOptionControls: some View {
         VStack(alignment: .leading, spacing: 10) {
-            optionRow("Copy") {
+            optionRow(
+                "Copy",
+                maximumControlWidth: ImportFormLayout.compactSegmentedControlWidth
+            ) {
                 Picker("Copy", selection: mediaSelectionBinding) {
                     ForEach(ImportMediaSelection.allCases) { selection in
                         Text(mediaSelectionTitle(selection))
@@ -207,28 +226,37 @@ struct ImportPreviewView: View {
                             .disabled(!isMediaSelectionAvailable(selection))
                     }
                 }
+                .id(mediaSelectionPickerIdentity)
                 .labelsHidden()
                 .pickerStyle(.segmented)
             }
 
             if showsMixedDestinationLayout {
-                optionRow("Save to") {
+                optionRow(
+                    "Save to",
+                    maximumControlWidth: ImportFormLayout.compactSegmentedControlWidth
+                ) {
                     Picker("Save to", selection: destinationLayoutBinding) {
                         ForEach([ImportDestinationLayout.singleLibrary, .separateMediaFolders]) { layout in
                             Text(layout.displayTitle).tag(layout)
                         }
                     }
+                    .id("import-destination-layout-picker")
                     .labelsHidden()
                     .pickerStyle(.segmented)
                 }
             }
 
-            optionRow("Organize") {
+            optionRow(
+                "Organize",
+                maximumControlWidth: ImportFormLayout.compactSegmentedControlWidth
+            ) {
                 Picker("Organize", selection: folderGroupingBinding) {
                     ForEach(ImportFolderGrouping.allCases) { grouping in
                         Text(grouping.displayTitle).tag(grouping)
                     }
                 }
+                .id("import-folder-grouping-picker")
                 .labelsHidden()
                 .pickerStyle(.segmented)
             }
@@ -237,25 +265,49 @@ struct ImportPreviewView: View {
 
     private func optionRow<Content: View>(
         _ title: String,
+        maximumControlWidth: CGFloat? = nil,
         @ViewBuilder content: () -> Content
     ) -> some View {
         ViewThatFits(in: .horizontal) {
-            HStack(spacing: 12) {
+            HStack(spacing: ImportFormLayout.columnSpacing) {
                 Text(title)
                     .foregroundStyle(.secondary)
-                    .frame(width: 88, alignment: .leading)
-                content()
-                    .frame(maxWidth: 440)
-                Spacer(minLength: 0)
+                    .frame(width: ImportFormLayout.labelWidth, alignment: .leading)
+                optionRowControl(maximumWidth: maximumControlWidth) {
+                    content()
+                }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             VStack(alignment: .leading, spacing: 6) {
                 Text(title)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                content()
-                    .frame(maxWidth: 440)
+                optionRowControl(maximumWidth: maximumControlWidth) {
+                    content()
+                }
             }
+        }
+    }
+
+    @ViewBuilder
+    private func optionRowControl<Content: View>(
+        maximumWidth: CGFloat?,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        if let maximumWidth {
+            content()
+                .frame(
+                    minWidth: ImportFormLayout.minimumControlWidth,
+                    idealWidth: maximumWidth,
+                    maxWidth: maximumWidth
+                )
+        } else {
+            content()
+                .frame(
+                    minWidth: ImportFormLayout.minimumControlWidth,
+                    maxWidth: .infinity
+                )
         }
     }
 
@@ -568,6 +620,7 @@ struct ImportPreviewView: View {
                 Text(filterTitle(filter)).tag(filter)
             }
         }
+        .id(fileFilterPickerIdentity)
         .labelsHidden()
         .pickerStyle(.segmented)
         .frame(maxWidth: 430)
@@ -590,6 +643,7 @@ struct ImportPreviewView: View {
             Label("List", systemImage: "list.bullet").tag(ImportPreviewMode.list)
             Label("Grid", systemImage: "square.grid.2x2").tag(ImportPreviewMode.grid)
         }
+        .id("import-preview-mode-picker")
         .labelsHidden()
         .pickerStyle(.segmented)
         .frame(width: 120)
@@ -866,6 +920,22 @@ struct ImportPreviewView: View {
         }
     }
 
+    // macOS can otherwise reuse an NSSegmentedControl while LazyVStack is
+    // prefetching the review page, then apply a selection to stale segments.
+    // Recreate only when the dynamic segment titles actually change.
+    private var mediaSelectionPickerIdentity: String {
+        let photoCount = model.mediaContentProfile?.photoCount ?? -1
+        let videoCount = model.mediaContentProfile?.videoCount ?? -1
+        return "import-media-selection-picker-\(photoCount)-\(videoCount)"
+    }
+
+    private var fileFilterPickerIdentity: String {
+        let allCount = model.previewRows.count
+        let copyCount = model.previewTotals.copyFiles
+        let skippedCount = allCount - copyCount
+        return "import-file-filter-picker-\(allCount)-\(copyCount)-\(skippedCount)-\(model.previewAttentionCount)"
+    }
+
     private func mediaContentSummary(_ profile: MediaContentProfile) -> String {
         var parts: [String] = []
         if profile.photoCount > 0 {
@@ -1002,54 +1072,90 @@ struct ImportPreviewView: View {
     }
 }
 
+private struct ImportReviewPrimaryAction: View {
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        Button {
+            model.importCurrentJob()
+        } label: {
+            Label(buttonTitle, systemImage: "square.and.arrow.down")
+        }
+        .buttonStyle(.borderedProminent)
+        .controlSize(.large)
+        .keyboardShortcut(.defaultAction)
+        .disabled(!model.canImportPlannedFiles)
+        .help(model.importReadinessMessage ?? "Start importing the reviewed files")
+        .accessibilityHint(model.importReadinessMessage ?? "Begins copying the reviewed files")
+        .accessibilityIdentifier("import.review.copy")
+    }
+
+    private var buttonTitle: String {
+        guard model.previewTotals.copyFiles > 0 else {
+            return "Nothing to Import"
+        }
+        return model.previewTotals.copyFiles == 1
+            ? "Import 1 File"
+            : "Import \(model.previewTotals.copyFiles) Files"
+    }
+}
+
 private struct ImportReviewFooter: View {
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
+            Image(systemName: statusSystemImage)
+                .foregroundStyle(statusColor)
+
             VStack(alignment: .leading, spacing: 2) {
-                Text(summary)
+                Text(statusTitle)
                     .fontWeight(.semibold)
-                Text(readinessText)
+                Text(summary)
                     .font(.caption)
-                    .foregroundStyle(model.importReadinessMessage == nil ? Color.secondary : Color.orange)
+                    .foregroundStyle(.secondary)
             }
 
             Spacer(minLength: 12)
 
-            Button {
-                model.importCurrentJob()
-            } label: {
-                Label(buttonTitle, systemImage: "square.and.arrow.down")
+            if model.canImportPlannedFiles {
+                Text("Press Return to start")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
-            .buttonStyle(.borderedProminent)
-            .keyboardShortcut(.defaultAction)
-            .disabled(!model.canImportPlannedFiles)
-            .accessibilityHint(model.importReadinessMessage ?? "Begins copying the reviewed files")
-            .accessibilityIdentifier("import.review.copy")
         }
         .padding(.horizontal, 24)
-        .padding(.vertical, 11)
+        .padding(.vertical, 10)
         .background(.bar)
         .overlay(alignment: .top) {
             Divider()
         }
+        .accessibilityElement(children: .combine)
     }
 
     private var summary: String {
         let bytes = ByteCountFormatter.string(fromByteCount: model.previewTotals.copyBytes, countStyle: .file)
+        let files = model.previewTotals.copyFiles == 1
+            ? "1 file"
+            : "\(model.previewTotals.copyFiles) files"
         let folders = model.previewDestinations.count == 1
             ? "1 folder"
             : "\(model.previewDestinations.count) folders"
-        return "\(model.previewTotals.copyFiles) files · \(bytes) · \(folders)"
+        return "\(files) · \(bytes) · \(folders)"
     }
 
-    private var readinessText: String {
-        model.importReadinessMessage ?? "Ready to copy"
+    private var statusTitle: String {
+        model.importReadinessMessage ?? "Ready to import"
     }
 
-    private var buttonTitle: String {
-        model.previewTotals.copyFiles == 1 ? "Copy 1 File" : "Copy \(model.previewTotals.copyFiles) Files"
+    private var statusSystemImage: String {
+        model.importReadinessMessage == nil
+            ? "checkmark.circle.fill"
+            : "exclamationmark.triangle.fill"
+    }
+
+    private var statusColor: Color {
+        model.importReadinessMessage == nil ? .green : .orange
     }
 }
 
