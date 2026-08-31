@@ -5,14 +5,35 @@ public enum AppGroupContainer {
         fileManager: FileManager = .default,
         bundle: Bundle = .main
     ) throws -> URL {
-        guard AppDistribution.current.usesSharedAppGroupContainer else {
+        try sharedSupportDirectory(
+            fileManager: fileManager,
+            bundle: bundle,
+            distribution: .current
+        )
+    }
+
+    static func sharedSupportDirectory(
+        fileManager: FileManager = .default,
+        bundle: Bundle = .main,
+        distribution: AppDistribution,
+        appGroupIdentifier: String? = nil,
+        containerURLProvider: ((String) -> URL?)? = nil
+    ) throws -> URL {
+        guard distribution.usesSharedAppGroupContainer else {
             return try DatabasePoolFactory.defaultApplicationSupportDirectory(fileManager: fileManager)
         }
-        let identifier = bundle.object(forInfoDictionaryKey: "SDImportAppGroupIdentifier") as? String
+        let identifier = appGroupIdentifier
+            ?? bundle.object(forInfoDictionaryKey: "SDImportAppGroupIdentifier") as? String
             ?? AppDistribution.appGroupIdentifier
-        guard let containerURL = fileManager.containerURL(
-            forSecurityApplicationGroupIdentifier: identifier
-        ) else {
+        let containerURL: URL?
+        if let containerURLProvider {
+            containerURL = containerURLProvider(identifier)
+        } else {
+            containerURL = fileManager.containerURL(
+                forSecurityApplicationGroupIdentifier: identifier
+            )
+        }
+        guard let containerURL else {
             throw SDImportError.missingApplicationGroupContainer(identifier)
         }
         return containerURL

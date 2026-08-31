@@ -599,7 +599,7 @@ final class AppModel: ObservableObject {
     func refreshAvailableSourceVolumes() {
         let detector = VolumeDetector()
         mountedVolumesSnapshot = detector.allMountedVolumes(
-            includeCapacity: !AppDistribution.current.requiresConsentBeforeMediaProbe
+            includeCapacity: AppDistribution.current.mountPrivacyPolicy.includesCapacityBeforeConsent
         )
         availableSourceVolumes = detector.likelyImportVolumes(from: mountedVolumesSnapshot)
         rebuildSourceEjectionTargetCache()

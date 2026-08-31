@@ -47,6 +47,14 @@ expect_absent_plist_key() {
   fi
 }
 
+expect_universal_binary() {
+  local binary="$1"
+  local architectures
+  architectures="$(/usr/bin/lipo -archs "$binary")" || fail "could not read architectures from $binary"
+  [[ " $architectures " == *" arm64 "* ]] || fail "$binary is missing arm64"
+  [[ " $architectures " == *" x86_64 "* ]] || fail "$binary is missing x86_64"
+}
+
 expect_file "$APP_INFO"
 expect_file "$APP_PRIVACY"
 expect_directory "$AGENT_BUNDLE"
@@ -60,6 +68,8 @@ APP_BINARY="$APP_CONTENTS/MacOS/$(plist_value "$APP_INFO" CFBundleExecutable)"
 AGENT_BINARY="$AGENT_CONTENTS/MacOS/$(plist_value "$AGENT_INFO" CFBundleExecutable)"
 expect_file "$APP_BINARY"
 expect_file "$AGENT_BINARY"
+expect_universal_binary "$APP_BINARY"
+expect_universal_binary "$AGENT_BINARY"
 
 /usr/bin/plutil -lint "$APP_INFO" "$AGENT_INFO" "$APP_PRIVACY" "$AGENT_PRIVACY" >/dev/null
 signature_output="$(/usr/bin/codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE" 2>&1)" \
@@ -90,18 +100,25 @@ for key in SUFeedURL SUPublicEDKey SUEnableAutomaticChecks SUAllowsAutomaticUpda
   expect_absent_plist_key "$APP_INFO" "$key"
 done
 
-if /usr/bin/find "$APP_BUNDLE" -iname '*sparkle*' -print -quit | /usr/bin/grep -q .; then
+if /usr/bin/find "$APP_BUNDLE" -iname '*sparkle*' -print -quit | /usr/bin/grep . >/dev/null; then
   fail "Sparkle content is present"
+fi
+if /usr/bin/find "$APP_BUNDLE" \( -name '*.storekit' -o -name '*.xctest' \) \
+  -print -quit | /usr/bin/grep . >/dev/null; then
+  fail "StoreKit development or test artifacts are present"
 fi
 if [[ -d "$APP_CONTENTS/Resources/SDImportAgent.app" ]]; then
   fail "the background helper is embedded outside Library/LoginItems"
 fi
-if /usr/bin/otool -L "$APP_BINARY" "$AGENT_BINARY" | /usr/bin/grep -q 'Sparkle.framework'; then
+if /usr/bin/otool -L "$APP_BINARY" "$AGENT_BINARY" | /usr/bin/grep 'Sparkle.framework' >/dev/null; then
   fail "an executable links Sparkle"
 fi
 if /usr/bin/strings "$APP_BINARY" "$AGENT_BINARY" \
-  | /usr/bin/grep -Eq 'SUFeedURL|SUPublicEDKey|Sparkle\.framework|SPUStandardUpdater'; then
+  | /usr/bin/grep -E 'SUFeedURL|SUPublicEDKey|Sparkle\.framework|SPUStandardUpdater' >/dev/null; then
   fail "an executable contains direct-edition Sparkle keys or symbols"
+fi
+if ! /usr/bin/strings "$APP_BINARY" | /usr/bin/grep -Fx 'media.jenny.sdimport.unlimited' >/dev/null; then
+  fail "the main executable does not reference the reviewed lifetime product identifier"
 fi
 
 app_entitlements="$(mktemp /tmp/sdimport-app-entitlements.XXXXXX)"
@@ -121,7 +138,8 @@ expect_plist_value "$agent_entitlements" 'com\.apple\.security\.app-sandbox' tru
 expect_plist_value "$agent_entitlements" 'com\.apple\.security\.application-groups.0' group.media.jenny.sdimport
 expect_absent_plist_key "$agent_entitlements" 'com\.apple\.security\.files\.user-selected\.read-write'
 
-if /usr/bin/plutil -p "$app_entitlements" "$agent_entitlements" | /usr/bin/grep -q 'temporary-exception'; then
+if /usr/bin/plutil -p "$app_entitlements" "$agent_entitlements" \
+  | /usr/bin/grep 'temporary-exception' >/dev/null; then
   fail "temporary sandbox exceptions are present"
 fi
 
@@ -143,6 +161,8 @@ if [[ "${REQUIRE_PROVISIONED_SIGNATURE:-0}" == "1" ]]; then
   expect_plist_value "$agent_entitlements" 'com\.apple\.developer\.team-identifier' 5736QK4NZX
   expect_plist_value "$app_profile_plist" 'Entitlements.com\.apple\.application-identifier' 5736QK4NZX.media.jenny.sdimport
   expect_plist_value "$agent_profile_plist" 'Entitlements.com\.apple\.application-identifier' 5736QK4NZX.media.jenny.sdimport.agent
+  expect_plist_value "$app_profile_plist" 'Entitlements.com\.apple\.security\.application-groups.0' group.media.jenny.sdimport
+  expect_plist_value "$agent_profile_plist" 'Entitlements.com\.apple\.security\.application-groups.0' group.media.jenny.sdimport
 
   if [[ "$(plist_value "$app_entitlements" 'com\.apple\.security\.get-task-allow' || true)" == "true" ]]; then
     fail "the main app has the development get-task-allow entitlement"

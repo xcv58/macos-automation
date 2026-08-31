@@ -1,5 +1,21 @@
 import Foundation
 
+public struct MountPrivacyPolicy: Equatable, Sendable {
+    public let includesCapacityBeforeConsent: Bool
+    public let probesMediaBeforeConsent: Bool
+    public let usesDistributedNotificationHandoff: Bool
+
+    init(
+        includesCapacityBeforeConsent: Bool,
+        probesMediaBeforeConsent: Bool,
+        usesDistributedNotificationHandoff: Bool
+    ) {
+        self.includesCapacityBeforeConsent = includesCapacityBeforeConsent
+        self.probesMediaBeforeConsent = probesMediaBeforeConsent
+        self.usesDistributedNotificationHandoff = usesDistributedNotificationHandoff
+    }
+}
+
 public enum AppDistribution: String, Codable, Sendable {
     case direct
     case macAppStore = "app-store"
@@ -20,7 +36,24 @@ public enum AppDistribution: String, Codable, Sendable {
     }
 
     public var requiresConsentBeforeMediaProbe: Bool {
-        self == .macAppStore
+        !mountPrivacyPolicy.probesMediaBeforeConsent
+    }
+
+    public var mountPrivacyPolicy: MountPrivacyPolicy {
+        switch self {
+        case .direct:
+            MountPrivacyPolicy(
+                includesCapacityBeforeConsent: true,
+                probesMediaBeforeConsent: true,
+                usesDistributedNotificationHandoff: true
+            )
+        case .macAppStore:
+            MountPrivacyPolicy(
+                includesCapacityBeforeConsent: false,
+                probesMediaBeforeConsent: false,
+                usesDistributedNotificationHandoff: false
+            )
+        }
     }
 
     public var usesSharedAppGroupContainer: Bool {

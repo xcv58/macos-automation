@@ -5,6 +5,7 @@ import SDImportCore
 @MainActor
 final class MountEventObserver {
     private let detector = VolumeDetector()
+    private let mountPrivacyPolicy: MountPrivacyPolicy
     private var debouncer = MountDebouncer()
     private var token: NSObjectProtocol?
     private var distributedToken: NSObjectProtocol?
@@ -20,12 +21,14 @@ final class MountEventObserver {
 
     init(
         applicationURL: URL = Bundle.main.bundleURL,
+        distribution: AppDistribution = .current,
         handler: @escaping (MountedVolume) -> MountEventHandlingDisposition,
         shouldHandleDirectMount: @escaping () -> Bool,
         shouldHandleHandoff: @escaping (MountHandoffEvent) -> Bool,
         handoffAcknowledgedHandler: @escaping (MountHandoffEvent) -> Void = { _ in },
         errorHandler: @escaping (String, UInt64?) -> Void = { _, _ in }
     ) {
+        mountPrivacyPolicy = distribution.mountPrivacyPolicy
         self.handler = handler
         self.shouldHandleDirectMount = shouldHandleDirectMount
         self.shouldHandleHandoff = shouldHandleHandoff
@@ -55,7 +58,7 @@ final class MountEventObserver {
             }
         }
 
-        if AppDistribution.current == .direct {
+        if mountPrivacyPolicy.usesDistributedNotificationHandoff {
             distributedToken = DistributedNotificationCenter.default().addObserver(
                 forName: Notification.Name(MountHandoff.notificationName),
                 object: targetApplicationPath,
@@ -99,7 +102,7 @@ final class MountEventObserver {
         }
         let volume = detector.mountedVolume(
             from: mountURL,
-            includeCapacity: !AppDistribution.current.requiresConsentBeforeMediaProbe
+            includeCapacity: mountPrivacyPolicy.includesCapacityBeforeConsent
         )
         guard detector.isLikelyImportVolume(volume) else {
             return
@@ -193,7 +196,7 @@ final class MountEventObserver {
         let mountURL = URL(fileURLWithPath: path, isDirectory: true)
         let detectedVolume = detector.mountedVolume(
             from: mountURL,
-            includeCapacity: !AppDistribution.current.requiresConsentBeforeMediaProbe
+            includeCapacity: mountPrivacyPolicy.includesCapacityBeforeConsent
         )
         if !MountHandoffVolumeIdentity.matchesCurrentVolume(
             expectedUUID: event?.mountedVolume?.volumeUUID,
@@ -224,7 +227,7 @@ final class MountEventObserver {
             finish(claim)
             return
         }
-        if AppDistribution.current.requiresConsentBeforeMediaProbe {
+        if !mountPrivacyPolicy.probesMediaBeforeConsent {
             switch handleImportableVolume(volume, event: event) {
             case .accepted:
                 finish(claim)

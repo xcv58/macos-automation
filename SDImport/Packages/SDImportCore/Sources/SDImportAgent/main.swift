@@ -31,6 +31,7 @@ private final class AgentDelegate: NSObject, NSApplicationDelegate {
     }
 
     private let detector = VolumeDetector()
+    private let mountPrivacyPolicy = AppDistribution.current.mountPrivacyPolicy
     private var token: NSObjectProtocol?
 
     private var agentBuild: String {
@@ -68,12 +69,12 @@ private final class AgentDelegate: NSObject, NSApplicationDelegate {
     private func handleMountURL(_ mountURL: URL) {
         let volume = detector.mountedVolume(
             from: mountURL,
-            includeCapacity: !AppDistribution.current.requiresConsentBeforeMediaProbe
+            includeCapacity: mountPrivacyPolicy.includesCapacityBeforeConsent
         )
         guard detector.isLikelyImportVolume(volume) else {
             return
         }
-        if AppDistribution.current.requiresConsentBeforeMediaProbe {
+        if !mountPrivacyPolicy.probesMediaBeforeConsent {
             handleImportableVolume(volume)
             return
         }
@@ -141,7 +142,7 @@ private final class AgentDelegate: NSObject, NSApplicationDelegate {
         }
 
         activateOrLaunchMainApp(at: appURL, eventSequence: eventSequence)
-        if AppDistribution.current == .direct {
+        if mountPrivacyPolicy.usesDistributedNotificationHandoff {
             post(volume, eventID: event?.id, targetApplicationPath: appURL.path)
         }
     }

@@ -21,16 +21,15 @@ final class StoreKitIntegrationTests: XCTestCase {
     }
 
     func testLocalConfigurationDefinesLifetimeProduct() async throws {
-        try requireProvisionedHost()
         let product = try await requireRuntimeProduct()
 
+        XCTAssertEqual(product.id, "media.jenny.sdimport.unlimited")
         XCTAssertEqual(product.type, .nonConsumable)
         XCTAssertEqual(product.displayName, "SD Import Unlimited")
         XCTAssertFalse(product.isFamilyShareable)
     }
 
     func testPurchaseRestoreAndRefundLifecycle() async throws {
-        try requireProvisionedHost()
         let purchased = makeManager(label: "purchase")
         await purchased.refreshStoreState()
         XCTAssertNotNil(purchased.productDisplayPrice)
@@ -60,7 +59,6 @@ final class StoreKitIntegrationTests: XCTestCase {
     }
 
     func testPendingPurchaseNeverUnlocks() async throws {
-        try requireProvisionedHost()
         session.askToBuyEnabled = true
         let pending = makeManager(label: "pending")
         await pending.refreshStoreState()
@@ -70,7 +68,6 @@ final class StoreKitIntegrationTests: XCTestCase {
     }
 
     func testVerificationFailureNeverUnlocks() async throws {
-        try requireProvisionedHost()
         session.resetToDefaultState()
         session.disableDialogs = true
         session.clearTransactions()
@@ -114,13 +111,4 @@ final class StoreKitIntegrationTests: XCTestCase {
         return nil
     }
 
-    private func requireProvisionedHost() throws {
-        let profileURL = Bundle.main.bundleURL
-            .appendingPathComponent("Contents/embedded.provisionprofile")
-        guard FileManager.default.fileExists(atPath: profileURL.path) else {
-            throw XCTSkip(
-                "The hosted StoreKit suite requires an automatically signed Apple Development app target."
-            )
-        }
-    }
 }

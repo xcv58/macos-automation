@@ -10,19 +10,33 @@ public enum BookmarkPurpose: String, Codable, CaseIterable, Hashable, Sendable {
 public final class SecurityScopedResourceAccess: @unchecked Sendable {
     public let url: URL
     private let didStartAccess: Bool
+    private let stopAccess: (URL) -> Void
 
     public var isActive: Bool {
         didStartAccess
     }
 
-    public init(url: URL) {
+    public convenience init(url: URL) {
+        self.init(
+            url: url,
+            startAccess: { $0.startAccessingSecurityScopedResource() },
+            stopAccess: { $0.stopAccessingSecurityScopedResource() }
+        )
+    }
+
+    init(
+        url: URL,
+        startAccess: (URL) -> Bool,
+        stopAccess: @escaping (URL) -> Void
+    ) {
         self.url = url
-        didStartAccess = url.startAccessingSecurityScopedResource()
+        didStartAccess = startAccess(url)
+        self.stopAccess = stopAccess
     }
 
     deinit {
         if didStartAccess {
-            url.stopAccessingSecurityScopedResource()
+            stopAccess(url)
         }
     }
 }

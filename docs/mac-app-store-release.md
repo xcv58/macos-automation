@@ -60,10 +60,18 @@ xcodebuild test \
   -only-testing:SDImportStoreKitTests
 ```
 
-The StoreKit suite covers product metadata, successful purchase, refund and
-revocation, restore, Ask to Buy pending state, and failed verification. It
-requires Xcode automatic signing; an unsigned host is skipped rather than
-silently contacting the sandbox.
+The StoreKit suite covers the exact product metadata, successful purchase,
+refund and revocation, restore, Ask to Buy pending state, and failed
+verification using the local Xcode StoreKit configuration. The deterministic
+core policy tests separately cover the free allowance and cancellation. These
+tests validate commerce behavior; they are not evidence of valid production
+provisioning or a working sandbox container. The provisioned archive verifier
+and manual QA matrix are separate release gates.
+
+The core suite also locks down the edition boundary: exact identifiers, the
+pre-consent mount privacy policy, App Group mailbox location and fail-closed
+behavior, balanced security-scope start/stop lifetime, and direct-edition
+capabilities.
 
 Build and audit a local App Store-shaped bundle from the repository root:
 
@@ -90,13 +98,33 @@ REQUIRE_PROVISIONED_SIGNATURE=1 ./script/verify_app_store_bundle.sh \
 ```
 
 `REQUIRE_PROVISIONED_SIGNATURE=1` additionally requires embedded profiles with
-the exact App IDs and team entitlements, and rejects development
-`get-task-allow`. This is the release gate; the ad-hoc staged bundle is only a
-local structure and behavior audit.
+the exact App IDs, team, and App Group entitlements, and rejects development
+`get-task-allow`. The normal audit also requires universal app/helper binaries,
+the exact lifetime product identifier in the compiled app, and no StoreKit test
+artifacts. This is the release gate; the ad-hoc staged bundle is only a local
+structure and behavior audit.
 
 Never use `ALLOW_UNTRUSTED_DEVELOPMENT_SIGNATURE=1` as release evidence. It is
 only a diagnostic option for inspecting other bundle properties while a local
 development certificate trust problem is being repaired.
+
+## Current Validation Status
+
+Snapshot from 2026-08-30:
+
+| Goal gate | Current evidence | Remaining evidence |
+| --- | --- | --- |
+| Sandboxed manual import | App Store-shaped Release bundle builds and passes the structural verifier. | Exact Apple profiles, then a user-selected synthetic card import in the sandbox. |
+| Bookmark persistence and revocation | Core tests prove exact group-path selection, fail-closed missing-group behavior, and one-for-one security-scope lifetime. | Relaunch, reinsertion, stale bookmark, and revoked-permission checks in a genuinely provisioned sandbox. |
+| No scan before consent | The shared mount policy test proves the App Store edition reads no capacity, performs no media probe, and sends no distributed-notification handoff before consent. Both helper and observer use that policy. | Observe the helper/app flow with a synthetic card under the provisioned sandbox. |
+| Sandboxed helper mailbox | Existing mailbox/causality tests plus App Group path tests pass. | End-to-end login-item wake and mailbox delivery with the registered App Group. |
+| StoreKit | Four app-hosted local StoreKit tests pass with no skips; core policy covers free allowance and cancellation. | Sandbox/TestFlight purchase and restore after the IAP exists in App Store Connect. |
+| Both editions | 226 tests in 34 suites pass; direct and App Store Release builds succeed; direct Sparkle packaging and identifiers remain intact. | None locally. |
+| Archive inspection | Local ad-hoc App Store bundle passes identifiers, universal binaries, sandbox entitlements, privacy manifests, product ID, helper placement, test-artifact exclusion, and no-Sparkle checks. | A trusted distribution archive. The provisioned verifier currently fails closed because the exact embedded profiles do not exist. |
+
+The local Xcode Debug host used for StoreKit simulation currently reports an
+invalid signed-entitlements blob, so it is deliberately not counted as sandbox
+evidence. `REQUIRE_PROVISIONED_SIGNATURE=1` is the authoritative signing gate.
 
 ## Apple Account Setup
 
