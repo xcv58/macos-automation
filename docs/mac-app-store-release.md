@@ -126,6 +126,14 @@ The local Xcode Debug host used for StoreKit simulation currently reports an
 invalid signed-entitlements blob, so it is deliberately not counted as sandbox
 evidence. `REQUIRE_PROVISIONED_SIGNATURE=1` is the authoritative signing gate.
 
+An outside-sandbox Xcode-beta archive on 2026-08-30 completed with exit status
+zero, but Xcode signed both bundles with `Apple Development: Yihong Chen
+(SXJG6VHPUC)` and embedded `Mac Team Provisioning Profile: *` in both. That
+wildcard profile contains neither the exact application identifiers nor the
+App Group. The strict verifier rejected the archive because it was not signed
+by an Apple Distribution identity. A successful `xcodebuild archive` alone is
+therefore not App Store signing evidence.
+
 ## Apple Account Setup
 
 Completed in the Apple Developer account on 2026-08-30:
