@@ -38,7 +38,8 @@ committing any excerpt.
 | Development-provisioned sandbox import | With no temporary exceptions, authorize a synthetic card and destination through real macOS folder panels, scan one JPEG, complete the import, and verify the copied output | Passed 2026-08-31 with `media.jenny.sdimport`: App Sandbox, user-selected read/write, and App Group entitlements were present; source scan, destination selection, import completion, and output verification passed |
 | Source bookmark relaunch | Relaunch the same sandboxed app without another folder panel, restore the synthetic source bookmark, and scan again | Passed 2026-08-31; the persisted source path returned, Scan Card was enabled, no open panel appeared, and the second scan reached review |
 | Synthetic helper handoff and decline | Register the real embedded helper, inject one event after removable-volume eligibility, persist it through the App Group mailbox, wake the containing app, verify the explicit no-scan consent sheet, choose `Don't Scan`, and observe no folder or review UI | Passed 2026-08-31 after installing the exact app/helper Apple Development profiles and explicitly allowing the login item. The signed helper registered and launched, the App Group mailbox woke the containing app, the consent sheet appeared, and declining produced no folder or review UI. This gate deliberately bypasses OS mount detection because disk images are rejected by production. |
-| Physical App Store card and helper | Quit the main app, insert a removable card, verify the helper wakes it without enumeration, decline consent with no scan, then accept consent and reuse or refresh folder authorization | Passed 2026-08-31 with a removable ExFAT Secure Digital card. The helper woke the app and presented per-scan consent; declining produced no scan, while allowing selected the physical card without another source panel. A separately authorized destination received one synthetic JPEG with 1 imported, 2 support files skipped, 0 failed, and a byte-for-byte source/copy match. Rescan reported Nothing New and skipped the known JPEG. The MAS build intentionally exposed no in-app ejection control. |
+| Physical App Store card and helper | Quit the main app, insert a removable card, verify the helper wakes it without enumeration, decline consent with no scan, then accept consent and reuse or refresh folder authorization | Passed 2026-08-31 with a removable ExFAT Secure Digital card. The helper woke the app and presented per-scan consent; declining produced no scan, while allowing selected the physical card without another source panel. A separately authorized destination received one synthetic JPEG with 1 imported, 2 support files skipped, 0 failed, and a byte-for-byte source/copy match. Rescan reported Nothing New and skipped the known JPEG. Exact signed MAS source-ejection validation is tracked separately below. |
+| Physical App Store source eject | In the exact signed sandboxed MAS build, verify the named eject action before scan, after scan, and on a successful receipt, then invoke it from the receipt | Passed 2026-08-31. All three controls appeared only for the selected verified removable source. Receipt ejection unmounted the physical Secure Digital card, changed the receipt to `SD Card ejected. Safe to remove.`, and required no temporary sandbox exception. |
 | Bookmark revocation and stale refresh | Revoke folder permission or exercise a stale bookmark, relaunch, and confirm a controlled repair panel with no preauthorization scan | Deterministic policy coverage proves the MAS edition refuses stale bookmarks while the direct edition retains refresh behavior; clean-account UI validation remains required before App Store submission |
 
 ## Required Hardware Passes
@@ -54,7 +55,7 @@ committing any excerpt.
 | Duplicate filenames | Two camera folders containing the same clip filename | Destination plan suffixes later copies and avoids overwrites | Fixture coverage exists; hardware unavailable |
 | Card removal during scan | Remove card after scan starts | User-facing failure; no duplicate job loop | Fixture coverage exists; hardware unavailable |
 | Card removal during import | Remove card during copy | Failed file recorded; retry remains available | Fixture coverage exists; hardware unavailable |
-| Manual source eject | Complete an error-free import, then choose the named eject action on the receipt | The whole source volume unmounts; the receipt says `Ejected — Safe to Remove`; destination files remain accessible | Passed 2026-07-22: 11 of 11 files (200.1 MB) copied, then the built-in-reader source ejected |
+| Manual source eject | Complete an error-free import, then choose the named eject action on the receipt | The whole source volume unmounts; the receipt says `Ejected — Safe to Remove`; destination files remain accessible | Direct pass 2026-07-22: 11 of 11 files (200.1 MB) copied, then the built-in-reader source ejected. Exact signed sandboxed MAS pass 2026-08-31: 1 JPEG copied byte-for-byte, then `SD Card` ejected. |
 | Automatic source eject | Enable `Eject source device after a successful import`, then complete an error-free import | The verified removable source device ejects only after the receipt and report are finalized | Required before releasing source ejection |
 | Multi-volume camera detection | Connect a camera that exposes internal storage and a memory card as separate disks | Both volumes are direct, one-click source choices labeled with the same physical device | Topology confirmed 2026-07-25 with DJI Pocket hardware: `Untitled` on one whole disk and `Pocket4` on a second whole disk share one DJI USB-device registry identity |
 | Multi-volume camera eject | Import from either storage volume, then choose the device eject action | Every whole disk belonging to the verified physical device unmounts before the UI says the camera is safe to disconnect | Grouped manual eject passed 2026-07-25; the post-import receipt path was not separately exercised on multi-volume hardware |
@@ -63,7 +64,7 @@ committing any excerpt.
 | Import completed with errors | Enable automatic ejection, then produce a retryable copy failure | The source remains mounted and retry stays available | Fixture policy coverage exists; confirm with hardware before release |
 | Source subfolder | Select a folder inside the mounted card as the source, import, then eject | SD Import ejects the card's volume root rather than only the selected folder | Fixture policy coverage exists; confirm with hardware before release |
 | Built-in card reader | Import from a card that macOS reports as both internal-location and removable | The verified removable card remains eligible and ejects normally | Passed 2026-07-22 with a removable Secure Digital source reported at an internal device location |
-| Ejection completion UI | Complete a clean import, then eject from the copy receipt | The named source has a prominent eject action; success changes to a green `Ejected — Safe to Remove` confirmation | Passed 2026-07-22 with source `Untitled` |
+| Ejection completion UI | Complete a clean import, then eject from the copy receipt | The named source has a prominent eject action; success changes to a green `Ejected — Safe to Remove` confirmation | Passed 2026-07-22 with direct source `Untitled`; passed 2026-08-31 in the exact signed sandboxed MAS build with source `SD Card` |
 | Zero-copy scan ejection | Scan a verified removable card whose files are all known or excluded | The Source panel offers manual ejection; automatic ejection does not run | Passed 2026-07-22: user confirmed the manual zero-copy eject flow; automatic ejection was not exercised |
 | Skip-copy scan ejection | Scan a verified removable source with files available to copy, then choose eject instead of import | The Source panel keeps manual ejection available beside `Scan Again`, copies no files, and automatic ejection does not run | Passed 2026-07-25 with DJI Pocket hardware: user confirmed the persistent Source-panel eject action worked without starting the copy |
 | Clean Mac user | Fresh user account, no prior settings | Onboarding appears; folders can be selected; Sparkle menu appears in release build | Accepted risk: clean-user manual pass unavailable |
@@ -103,7 +104,19 @@ committing any excerpt.
 - Zero-copy pass: the user confirmed that a completed scan with zero files
   planned for copying offered manual ejection and successfully ejected the
   source.
-- Not recorded for this pass: macOS version, Mac model, card brand, filesystem,
+- Not recorded for the 2026-07-25 pass: macOS version, Mac model, card brand,
+  filesystem, automatic ejection, blocked ejection, copy-failure behavior, and
+  source subfolder behavior.
+- Date: 2026-08-31.
+- Build: exact signed development-provisioned Mac App Store Debug build with
+  production sandbox, user-selected read/write, and App Group entitlements and
+  no temporary exceptions.
+- Reader: built-in Secure Digital reader; source `SD Card`, removable ExFAT.
+- App Store pass: the named eject control appeared before scan, after scan, and
+  on the successful receipt. One synthetic JPEG copied byte-for-byte, two
+  support files were skipped, and zero files failed. The receipt action
+  unmounted the source and changed to `SD Card ejected. Safe to remove.`
+- Not recorded for the App Store pass: macOS version, Mac model, card brand,
   automatic ejection, blocked ejection, copy-failure behavior, and source
   subfolder behavior.
 

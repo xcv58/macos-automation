@@ -36,7 +36,7 @@ struct AppStoreDistributionTests {
         #expect(AppDistribution.direct.importsUnsandboxedLegacyState)
         #expect(!AppDistribution.macAppStore.canBrowseSystemCrashReports)
         #expect(AppDistribution.direct.canBrowseSystemCrashReports)
-        #expect(!AppDistribution.macAppStore.supportsSourceEjection)
+        #expect(AppDistribution.macAppStore.supportsSourceEjection)
         #expect(AppDistribution.direct.supportsSourceEjection)
         #expect(AppDistribution.macAppStore.staleBookmarkHandling == .requireNewSelection)
         #expect(AppDistribution.direct.staleBookmarkHandling == .refresh)

@@ -69,7 +69,7 @@ public enum AppDistribution: String, Codable, Sendable {
     }
 
     public var supportsSourceEjection: Bool {
-        self == .direct
+        true
     }
 
     public var staleBookmarkHandling: StaleBookmarkHandling {

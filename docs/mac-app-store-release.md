@@ -10,7 +10,7 @@ This repository supports two macOS editions from the same Swift sources:
 | Updates | Sparkle | App Store |
 | Access | Unlimited | One completed import free, then lifetime IAP |
 | Source access | Normal filesystem access | User-approved security-scoped access |
-| Source ejection | Available | Not offered |
+| Source ejection | Available | Available after source authorization |
 
 The App Store lifetime product is the non-consumable
 `media.jenny.sdimport.unlimited`. Keep these identifiers stable after the first
@@ -53,17 +53,17 @@ the capability boundary. The current audit is:
 
 | Area | App Store behavior | Evidence or remaining gate |
 | --- | --- | --- |
-| Detection | `NSWorkspace.didMountNotification` and volume metadata identify a removable mount. The MAS policy omits capacity and media probing before consent. | Policy, helper, foreground observer, and mailbox tests pass; physical insertion remains a hardware gate. |
-| Helper | `SMAppService` runs the embedded sandboxed login item and an App Group mailbox carries occurrence-identified mount events. | Structural and deterministic tests pass, and both exact development profiles are installed. The signed runtime is waiting on explicit Login Items approval in a clean QA account. |
+| Detection | `NSWorkspace.didMountNotification` and volume metadata identify a removable mount. The MAS policy omits capacity and media probing before consent. | Policy, helper, foreground observer, mailbox tests, and physical insertion pass. |
+| Helper | `SMAppService` runs the embedded sandboxed login item and an App Group mailbox carries occurrence-identified mount events. | Structural and deterministic tests pass. Both exact development profiles are installed, the login item is explicitly allowed, and signed synthetic plus physical handoffs pass. |
 | Bookmarks | Source and destination access comes only from user-selected read/write security scopes. Fresh bookmarks restore across relaunch; stale bookmarks are rejected until a new selection. | Synthetic signed import/relaunch passed; revoked and stale repair UI remains a clean-account gate. |
-| `/Volumes` assumptions | `/Volumes` is only a mount-root discovery/default placeholder and direct-edition ejection boundary. It is not treated as App Store content authorization. | Source enumeration is downstream of `ensureSourceAccessForScan`; the MAS archive has no filesystem exception entitlement. |
-| Ejection | Not offered and guarded out of model operations in the MAS edition. | Edition policy and focused tests pass; direct behavior remains intact. |
+| `/Volumes` assumptions | `/Volumes` is only a mount-root discovery/default placeholder and a verified ejection-target boundary. It is not treated as App Store content authorization. | Source enumeration is downstream of `ensureSourceAccessForScan`; the MAS archive has no filesystem exception entitlement. |
+| Ejection | Offered only for a selected, verified removable source after user authorization. The MAS edition reuses the existing `NSWorkspace` path and the same conservative identity, destination-device, busy-volume, and error checks as the direct edition. | Passed 2026-08-31 with an exact signed sandboxed MAS Debug build and a physical removable Secure Digital card. Controls appeared before scan, after scan, and on the successful receipt; the receipt action unmounted the card and reported it safe to remove. No additional entitlement was added. |
 | Diagnostics | App-owned redacted diagnostics remain available. Browsing system crash-report directories is not offered in the MAS edition. | Edition policy and diagnostics redaction tests pass. |
 | Quick Look | Thumbnails and previews use URLs below the already authorized source while `AppModel` retains the matching security-scope object. | No additional entitlement or subprocess is used; confirm previewing from a physical card in final QA. |
 | Legacy importer | Unsandboxed legacy-state discovery runs only in the direct edition. | Central distribution policy and tests pass. |
 | Portable receipts | The optional ledger uses the source's user-selected read/write scope. Read-only or locking failures produce warnings and do not block normal local history/import behavior. | Ledger safety/concurrency tests pass; confirm a read-only physical card in final QA. |
 | Subprocesses | The shipped Swift app/helper launch no command-line subprocesses. Process use is confined to repository tooling. | Source audit passes. |
-| Privileged operations | The MAS app/helper contain no privilege escalation or temporary exception entitlement. Direct-only ejection uses `NSWorkspace`; it is unreachable in MAS. | Entitlement verifier and edition guards pass. |
+| Privileged operations | The MAS app/helper contain no privilege escalation or temporary exception entitlement. Source ejection uses the public `NSWorkspace` API only after the user authorizes the selected source. | Entitlement verification and exact signed physical MAS ejection passed without a temporary exception. |
 | Updates | Sparkle remains a direct-edition dependency and is absent from the MAS app target and archive. | Direct packaging and MAS archive verifiers pass. |
 
 ## Local Verification
@@ -227,9 +227,10 @@ Snapshot from 2026-08-31:
 | Bookmark persistence and revocation | The runtime gate relaunched the independently signed app, restored the selected synthetic source through its security-scoped bookmark without another folder panel, and completed a second scan. The physical card also remained selectable and scannable across app relaunches without another source panel. Core tests prove exact group-path selection, fail-closed missing-group behavior, one-for-one security-scope lifetime, and that the App Store edition refuses stale bookmarks until a new user selection while the direct edition retains refresh behavior. | Stale-bookmark and revoked-permission repair UI in a clean provisioned QA account. |
 | No scan before consent | The shared mount policy test proves the App Store edition reads no capacity, performs no media probe, and sends no distributed-notification handoff before consent. Both helper and observer use that policy. The exact signed helper-consent gate passed after explicit Login Items approval. Physical insertion then woke the app and presented per-scan consent; declining produced no scan, while allowing selected the physical card and enabled the later import pass. | Repeat on the processed TestFlight build in a clean account. |
 | Sandboxed helper mailbox | Mailbox/causality tests and App Group path tests pass. Both App IDs are assigned to the registered App Group, and exact device-scoped development profiles are installed. The signed helper registered, launched, persisted the injected handoff through the App Group mailbox, and woke the app. A later physical Secure Digital insertion independently woke the app and presented the consent sheet. | Recheck helper launch after login/reboot and on the processed TestFlight build. |
+| Source ejection | The exact signed sandboxed MAS Debug build exposed the named eject control for the selected physical card before scan, after scan, and on an error-free import receipt. The receipt action unmounted the removable Secure Digital card, changed to a safe-removal confirmation, and left the imported copy accessible. The app and helper retained only their production sandbox, user-selected-folder, and App Group entitlements, with no temporary exception. | Repeat on the processed TestFlight build. Exercise automatic ejection and macOS refusal while the source is busy before release. |
 | StoreKit | Six app-hosted local StoreKit tests pass with no skips; purchase/refund and restore each passed 10 repeated focused runs. Core policy covers free allowance and cancellation. Restore checks current entitlements first and falls back only to Apple's verified, non-revoked latest transaction for the exact product after an explicit sync; verification failure remains fail-closed. | Sandbox/TestFlight purchase and restore after the IAP exists in App Store Connect. |
 | Both editions | 233 tests in 35 suites pass; direct and App Store Release builds succeed; direct Sparkle packaging and identifiers remain intact. | None locally. |
-| Archive inspection | An Apple Distribution archive after the stale-bookmark policy change passed the strict verifier: exact app/helper identifiers and profiles, team and App Group, universal binaries, sandbox entitlements, privacy manifests, lifetime product ID, helper placement, test-artifact exclusion, and no Sparkle. | Repeat against current HEAD and the final version/build numbers before upload because later QA-only commits advanced the branch. |
+| Archive inspection | A fresh current-HEAD Apple Distribution archive after enabling MAS source ejection passed the strict verifier: exact app/helper identifiers and profiles, team and App Group, universal binaries, sandbox entitlements with no temporary exception, privacy manifests, lifetime product ID, helper placement, test-artifact exclusion, and no Sparkle. | Repeat with the final version/build numbers immediately before upload. |
 
 The standalone synthetic runtime gate is counted only for manual folder
 authorization, copying, and same-folder bookmark relaunch. The distinct
@@ -340,8 +341,9 @@ media unless the owner explicitly authorizes a personal card.
 - Confirm a second completed import requires the lifetime purchase.
 - Exercise purchase, cancellation, pending approval, restore, refund, and
   revocation with StoreKit sandbox/TestFlight accounts.
-- Confirm the App Store edition has no Sparkle UI, no source-eject controls, no
-  legacy-state import, and no system crash-report browser.
+- Confirm the App Store edition has no Sparkle UI, legacy-state import, or
+  system crash-report browser. Confirm source-eject controls appear only for a
+  selected, verified removable source and never while scanning or copying.
 - Reinsert the same card and confirm a new consent prompt appears before a new
   scan while the retained security-scoped permission still resolves correctly.
 - Export and review redacted diagnostics; confirm no filenames or full paths
