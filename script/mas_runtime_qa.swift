@@ -239,6 +239,10 @@ private final class AXDriver {
 @main
 private struct MacAppStoreRuntimeQA {
     private static let bundleIdentifier = "media.jenny.sdimport"
+    private static let helperBundleIdentifier = "media.jenny.sdimport.agent"
+    private static let helperPrepareArgument = "--sdimport-helper-runtime-qa-prepare"
+    private static let helperUnregisterArgument = "--sdimport-helper-runtime-qa-unregister"
+    private static let helperInjectedMountArgument = "--sdimport-helper-runtime-qa-mount"
     private static let launchArguments = [
         "-ApplePersistenceIgnoreState", "YES",
         "-SDImport.purchase.completedFreeImports", "0",
@@ -254,16 +258,32 @@ private struct MacAppStoreRuntimeQA {
     }
 
     private static func run() async throws {
-        guard CommandLine.arguments.count == 2 else {
-            throw RuntimeQAError.failed("usage: mas_runtime_qa.swift <app-bundle-path>")
-        }
         guard AXIsProcessTrusted() else {
             throw RuntimeQAError.failed(
                 "Accessibility permission is required for the terminal or automation host running this QA script"
             )
         }
 
-        let appURL = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
+        let arguments = Array(CommandLine.arguments.dropFirst())
+        if arguments.count == 1 {
+            try await runManualImport(
+                appURL: URL(fileURLWithPath: arguments[0], isDirectory: true).standardizedFileURL
+            )
+        } else if arguments.count == 3, arguments[0] == "helper" {
+            try await runHelperConsent(
+                appURL: URL(fileURLWithPath: arguments[1], isDirectory: true).standardizedFileURL,
+                mountURL: URL(fileURLWithPath: arguments[2], isDirectory: true).standardizedFileURL
+            )
+        } else {
+            throw RuntimeQAError.failed(
+                "usage: mas_runtime_qa.swift <app-bundle-path>\n"
+                    + "   or: mas_runtime_qa.swift helper <installed-app-bundle-path> <mounted-volume-path>"
+            )
+        }
+    }
+
+    private static func runManualImport(appURL: URL) async throws {
+        let appURL = appURL
             .standardizedFileURL
         let fixture = try makeFixture()
         defer { try? FileManager.default.removeItem(at: fixture.root) }
@@ -409,6 +429,147 @@ private struct MacAppStoreRuntimeQA {
         print("Verified independently signed sandbox import, copied output, and bookmark-backed relaunch scan")
     }
 
+    private static func runHelperConsent(appURL: URL, mountURL: URL) async throws {
+        guard appURL.path.hasPrefix("/Applications/") else {
+            throw RuntimeQAError.failed("The helper QA app must be installed below /Applications")
+        }
+        let helperURL = appURL
+            .appendingPathComponent("Contents/Library/LoginItems/SDImportAgent.app", isDirectory: true)
+            .standardizedFileURL
+        guard FileManager.default.fileExists(atPath: helperURL.path) else {
+            throw RuntimeQAError.failed("The installed app does not contain SDImportAgent.app")
+        }
+        guard try isMountedVolumeRoot(mountURL) else {
+            throw RuntimeQAError.failed("The helper QA mount path is not an actual mounted-volume root")
+        }
+
+        var helperRegistrationWasRequested = false
+        do {
+            terminateRunningCopies(of: appURL)
+            terminateRunningCopies(bundleIdentifier: helperBundleIdentifier, at: helperURL)
+
+            print("QA: registering and launching the real embedded login-item helper")
+            _ = try await launchApplication(
+                at: appURL,
+                arguments: [helperPrepareArgument] + launchArguments,
+                createsNewInstance: true
+            )
+            helperRegistrationWasRequested = true
+            _ = try await waitForRunningApplication(
+                bundleIdentifier: helperBundleIdentifier,
+                at: helperURL,
+                timeout: 15,
+                failure: "The registered embedded helper did not launch; check Login Items approval"
+            )
+            terminateRunningCopies(of: appURL)
+            try await waitForNoRunningApplication(
+                bundleIdentifier: bundleIdentifier,
+                at: appURL,
+                timeout: 5,
+                failure: "The exact temporary app copy could not be terminated"
+            )
+
+            print("QA: injecting one post-detection event into a new instance of the signed helper")
+            _ = try await launchApplication(
+                at: helperURL,
+                arguments: [helperInjectedMountArgument, mountURL.path],
+                createsNewInstance: true
+            )
+            let launchedApp = try await waitForRunningApplication(
+                bundleIdentifier: bundleIdentifier,
+                at: appURL,
+                timeout: 15,
+                failure: "The helper did not launch its containing app through the App Group handoff"
+            )
+            let driver = AXDriver(runningApplication: launchedApp)
+            driver.activate()
+
+            let consentMessage =
+                "SD Import detected this removable volume but has not scanned its contents. "
+                + "Allow a scan now to preview what would be copied?"
+            _ = try driver.element(
+                AXQuery(role: kAXStaticTextRole as String, value: consentMessage),
+                timeout: 15,
+                failure: "The helper handoff did not present the explicit no-scan consent message. "
+                    + "Accessible UI:\n" + driver.diagnosticSnapshot()
+            )
+            let declineButton = try driver.element(
+                AXQuery(role: kAXButtonRole as String, title: "Don't Scan"),
+                timeout: 3,
+                failure: "The helper consent sheet did not offer Don't Scan"
+            )
+            _ = try driver.element(
+                AXQuery(role: kAXButtonRole as String, title: "Allow Scan"),
+                timeout: 3,
+                failure: "The helper consent sheet did not offer Allow Scan"
+            )
+            try assertNoScanUI(driver, context: "before consent")
+
+            print("QA: declining consent and confirming that no scan or access panel starts")
+            try driver.press(declineButton)
+            try driver.waitForNoElement(
+                AXQuery(role: kAXButtonRole as String, title: "Allow Scan"),
+                timeout: 5,
+                failure: "The consent sheet did not dismiss after Don't Scan"
+            )
+            _ = try driver.element(
+                AXQuery(identifier: "import.phase.source.heading", value: "Choose a source"),
+                timeout: 5,
+                failure: "Declining helper consent did not leave the app on the source page"
+            )
+            try assertNoScanUI(driver, context: "after declining consent")
+
+            try await unregisterHelper(appURL: appURL, helperURL: helperURL)
+            helperRegistrationWasRequested = false
+            print("Verified signed helper registration, App Group handoff, explicit consent, and no-scan decline")
+        } catch {
+            if helperRegistrationWasRequested {
+                try? await unregisterHelper(appURL: appURL, helperURL: helperURL)
+            }
+            terminateRunningCopies(of: appURL)
+            terminateRunningCopies(bundleIdentifier: helperBundleIdentifier, at: helperURL)
+            throw error
+        }
+    }
+
+    private static func assertNoScanUI(_ driver: AXDriver, context: String) throws {
+        let forbiddenQueries = [
+            AXQuery(identifier: "open-panel"),
+            AXQuery(identifier: "import.phase.review.heading", value: "Review import"),
+            AXQuery(role: kAXStaticTextRole as String, value: "1 file ready"),
+        ]
+        for query in forbiddenQueries where driver.optionalElement(query, timeout: 0.5) != nil {
+            throw RuntimeQAError.failed(
+                "Unexpected scan or authorization UI appeared \(context). Accessible UI:\n"
+                    + driver.diagnosticSnapshot()
+            )
+        }
+    }
+
+    private static func unregisterHelper(appURL: URL, helperURL: URL) async throws {
+        terminateRunningCopies(of: appURL)
+        let unregisteringApp = try await launchApplication(
+            at: appURL,
+            arguments: [helperUnregisterArgument] + launchArguments,
+            createsNewInstance: true
+        )
+        try await waitForTermination(unregisteringApp)
+        terminateRunningCopies(bundleIdentifier: helperBundleIdentifier, at: helperURL)
+        try await waitForNoRunningApplication(
+            bundleIdentifier: helperBundleIdentifier,
+            at: helperURL,
+            timeout: 5,
+            failure: "The temporary embedded helper remained running after unregistration"
+        )
+        terminateRunningCopies(of: appURL)
+    }
+
+    private static func isMountedVolumeRoot(_ url: URL) throws -> Bool {
+        let values = try url.resourceValues(forKeys: [.isDirectoryKey, .volumeURLKey])
+        return values.isDirectory == true
+            && values.volume?.standardizedFileURL == url.standardizedFileURL
+    }
+
     private static func chooseDirectory(
         _ directory: URL,
         chooser: AXQuery,
@@ -476,9 +637,14 @@ private struct MacAppStoreRuntimeQA {
         keyUp.post(tap: .cghidEventTap)
     }
 
-    private static func launchApplication(at applicationURL: URL) async throws -> NSRunningApplication {
+    private static func launchApplication(
+        at applicationURL: URL,
+        arguments: [String] = launchArguments,
+        createsNewInstance: Bool = false
+    ) async throws -> NSRunningApplication {
         let configuration = NSWorkspace.OpenConfiguration()
-        configuration.arguments = launchArguments
+        configuration.arguments = arguments
+        configuration.createsNewApplicationInstance = createsNewInstance
         let running = try await NSWorkspace.shared.openApplication(
             at: applicationURL,
             configuration: configuration
@@ -494,6 +660,10 @@ private struct MacAppStoreRuntimeQA {
     }
 
     private static func terminateRunningCopies(of applicationURL: URL) {
+        terminateRunningCopies(bundleIdentifier: bundleIdentifier, at: applicationURL)
+    }
+
+    private static func terminateRunningCopies(bundleIdentifier: String, at applicationURL: URL) {
         let matchingApplications = NSRunningApplication.runningApplications(
             withBundleIdentifier: bundleIdentifier
         ).filter {
@@ -509,6 +679,51 @@ private struct MacAppStoreRuntimeQA {
         for running in matchingApplications where !running.isTerminated {
             running.forceTerminate()
         }
+        let forceDeadline = Date().addingTimeInterval(5)
+        while matchingApplications.contains(where: { !$0.isTerminated }), Date() < forceDeadline {
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+    }
+
+    private static func waitForRunningApplication(
+        bundleIdentifier: String,
+        at applicationURL: URL,
+        timeout: TimeInterval,
+        failure: String
+    ) async throws -> NSRunningApplication {
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            if let running = NSRunningApplication.runningApplications(
+                withBundleIdentifier: bundleIdentifier
+            ).first(where: {
+                !$0.isTerminated && $0.bundleURL?.standardizedFileURL == applicationURL
+            }) {
+                return running
+            }
+            try await Task.sleep(for: .milliseconds(100))
+        } while Date() < deadline
+        throw RuntimeQAError.failed(failure)
+    }
+
+    private static func waitForNoRunningApplication(
+        bundleIdentifier: String,
+        at applicationURL: URL,
+        timeout: TimeInterval,
+        failure: String
+    ) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            let isRunning = NSRunningApplication.runningApplications(
+                withBundleIdentifier: bundleIdentifier
+            ).contains(where: {
+                !$0.isTerminated && $0.bundleURL?.standardizedFileURL == applicationURL
+            })
+            if !isRunning {
+                return
+            }
+            try await Task.sleep(for: .milliseconds(100))
+        } while Date() < deadline
+        throw RuntimeQAError.failed(failure)
     }
 
     private static func waitForTermination(_ running: NSRunningApplication) async throws {

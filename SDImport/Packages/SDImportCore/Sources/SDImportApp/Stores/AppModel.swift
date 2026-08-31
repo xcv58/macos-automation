@@ -410,6 +410,14 @@ final class AppModel: ObservableObject {
                 legacyImportMessage = nil
             }
             try loadStoredConfiguration()
+#if DEBUG
+            if BackgroundPromptRuntimeQA.preparesApplication()
+                || BackgroundPromptRuntimeQA.consumesInjectedHandoff()
+            {
+                autoPromptEnabled = true
+                hasCompletedOnboarding = true
+            }
+#endif
             refreshFolderAccesses()
             let recovery = try RecoveryService(jobRepository: JobRepository(pool: pool))
                 .recoverInterruptedImports()

@@ -64,6 +64,18 @@ private final class AgentDelegate: NSObject, NSApplicationDelegate {
                 self?.handleMountURL(mountURL)
             }
         }
+#if DEBUG
+        if
+            let mountURL = BackgroundPromptRuntimeQA.injectedMountURL(),
+            let values = try? mountURL.resourceValues(forKeys: [.isDirectoryKey, .volumeURLKey]),
+            values.isDirectory == true,
+            values.volume?.standardizedFileURL == mountURL.standardizedFileURL
+        {
+            handleImportableVolume(
+                BackgroundPromptRuntimeQA.injectedPostDetectionVolume(at: mountURL)
+            )
+        }
+#endif
     }
 
     private func handleMountURL(_ mountURL: URL) {
@@ -165,6 +177,15 @@ private final class AgentDelegate: NSObject, NSApplicationDelegate {
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.activates = true
         configuration.createsNewApplicationInstance = !runningApplications.isEmpty
+#if DEBUG
+        if BackgroundPromptRuntimeQA.injectedMountURL() != nil {
+            configuration.arguments = [
+                BackgroundPromptRuntimeQA.consumeHandoffArgument,
+                "-ApplePersistenceIgnoreState",
+                "YES",
+            ]
+        }
+#endif
         NSWorkspace.shared.openApplication(at: appURL, configuration: configuration) { _, error in
             if error != nil {
                 try? BackgroundPromptAgentStateStore.defaultStore().recordError(

@@ -28,6 +28,24 @@ struct SDImportApp: App {
                 model?.mainWindowDidAppear()
             }
         )
+#if DEBUG
+        if BackgroundPromptRuntimeQA.preparesApplication() {
+            Task { @MainActor in
+                do {
+                    try await LoginItemController.setEnabled(false)
+                    try await LoginItemController.setEnabled(true)
+                } catch {
+                    NSLog("SD Import helper runtime QA registration failed: %@", error.localizedDescription)
+                }
+            }
+        }
+        if BackgroundPromptRuntimeQA.unregistersHelper() {
+            Task { @MainActor in
+                try? await LoginItemController.setEnabled(false)
+                NSApp.terminate(nil)
+            }
+        }
+#endif
     }
 
     var body: some Scene {

@@ -142,6 +142,10 @@ if /usr/bin/strings "$APP_BINARY" "$AGENT_BINARY" \
   | /usr/bin/grep -E 'SUFeedURL|SUPublicEDKey|Sparkle\.framework|SPUStandardUpdater' >/dev/null; then
   fail "an executable contains direct-edition Sparkle keys or symbols"
 fi
+if /usr/bin/strings "$APP_BINARY" "$AGENT_BINARY" \
+  | /usr/bin/grep -F 'sdimport-helper-runtime-qa' >/dev/null; then
+  fail "a Release executable contains the Debug-only helper runtime QA adapter"
+fi
 if ! /usr/bin/strings "$APP_BINARY" | /usr/bin/grep -Fx 'media.jenny.sdimport.unlimited' >/dev/null; then
   fail "the main executable does not reference the reviewed lifetime product identifier"
 fi
