@@ -9,8 +9,10 @@ open-source public release.
 - Updates: Sparkle appcast hosted as a GitHub Release asset.
 - Price/licensing: free, open source under the MIT License.
 - Native app support target: Apple Silicon Macs on macOS 14 or newer.
-- Unsupported paths for now: Homebrew distribution, App Store distribution,
-  payments, subscriptions, and license checks.
+- Unsupported in this direct-download track: Homebrew distribution and
+  payments. The separate Mac App Store candidate and non-consumable lifetime
+  IAP are tracked in `docs/mac-app-store-release.md`; they are not part of the
+  GitHub/Sparkle release gate described here.
 
 ## Ready Enough For First Public Release
 

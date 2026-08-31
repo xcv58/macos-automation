@@ -1,6 +1,6 @@
 # SD Import Privacy Policy
 
-Last updated: 2026-07-31
+Last updated: 2026-08-30
 
 SD Import is a local macOS utility for copying photos and videos from SD cards
 or selected source folders into user-selected destinations.
@@ -8,13 +8,17 @@ or selected source folders into user-selected destinations.
 ## Data SD Import Stores Locally
 
 SD Import stores app settings, security-scoped folder bookmarks, import history,
-and dedupe records on your Mac. The native app stores its database under:
+and dedupe records on your Mac. The direct-download edition stores its database
+under:
 
 ```text
 ~/Library/Application Support/SD Import/state.sqlite
 ```
 
-It may also store ordinary app preferences through macOS `UserDefaults`.
+It may also store ordinary app preferences through macOS `UserDefaults`. The
+Mac App Store edition stores the same local data inside its macOS app container.
+Its background helper and main app share only a sandboxed App Group mailbox used
+to hand off mounted-volume events and helper health state.
 
 The stored data can include:
 
@@ -39,21 +43,38 @@ refuses symbolic-link redirection outside the selected source.
 
 ## Network Use
 
-The native app uses the network for Sparkle update checks when updates are
-configured in the installed release build. Update checks contact the GitHub
-Release-hosted appcast for this repository.
+The direct-download edition uses the network for Sparkle update checks when
+updates are configured. Those checks contact the GitHub Release-hosted appcast
+for this repository. Sparkle is not included in the Mac App Store edition;
+updates for that edition are delivered by the App Store.
+
+The Mac App Store edition uses Apple's StoreKit service to load, purchase, and
+restore the optional lifetime unlock. Apple processes the transaction. SD
+Import does not operate an account or purchase server and does not receive your
+payment details.
 
 SD Import does not currently send analytics, telemetry, import history, media
 files, folder listings, or crash reports to the maintainer. Diagnostics export
 is opt-in and redacted.
 
+## Removable Media Permission
+
+The Mac App Store background helper may detect that a removable volume was
+mounted, but it does not enumerate or scan the volume. The main app asks before
+each newly detected card scan. If access has not already been granted, macOS
+then presents a folder-access panel. Media enumeration begins only after both
+steps are accepted. Folder access is retained locally as a security-scoped
+bookmark and can be revoked through macOS privacy controls.
+
 ## Diagnostics And Crash Reports
 
 SD Import does not include automatic crash-report upload. macOS may keep local
 diagnostic or crash logs according to your system settings. If you report a bug,
-you may choose what diagnostic details to share. The Diagnostics screen can
-reveal the local crash-report folder or export the latest local SD Import crash
-report, but the app does not upload it for you.
+you may choose what diagnostic details to share. The direct-download edition's
+Diagnostics screen can reveal the local crash-report folder or export the
+latest local SD Import crash report. The sandboxed Mac App Store edition does
+not browse that system directory. Neither edition uploads crash reports for
+you.
 
 When sharing diagnostics, redact private folder names, filenames, camera serial
 numbers, account names, and any media metadata you do not want public.
