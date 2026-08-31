@@ -30,10 +30,11 @@ release; changing one creates a different app, helper, group, or purchase.
   from drifting away from the submitted product.
 - `script/verify_app_store_bundle.sh` fails closed on identifier, sandbox,
   helper-placement, privacy-manifest, StoreKit, signature, or Sparkle drift.
-- Debug configurations use automatic development signing for local StoreKit
-  tests. Release configurations use manual Apple Distribution signing with
-  `SD Import for Mac App Store` and `SD Import Agent App Store`, preventing an
-  archive from silently falling back to wildcard development profiles.
+- Debug configurations use manual Apple Development signing with
+  `SD Import for Mac Development` and `SD Import Agent Development`. Release
+  configurations use manual Apple Distribution signing with `SD Import for Mac
+  App Store` and `SD Import Agent App Store`. Both configurations therefore
+  fail instead of silently falling back to wildcard profiles.
 
 Regenerate the checked-in Xcode project after changing `project.yml`:
 
@@ -53,7 +54,7 @@ the capability boundary. The current audit is:
 | Area | App Store behavior | Evidence or remaining gate |
 | --- | --- | --- |
 | Detection | `NSWorkspace.didMountNotification` and volume metadata identify a removable mount. The MAS policy omits capacity and media probing before consent. | Policy, helper, foreground observer, and mailbox tests pass; physical insertion remains a hardware gate. |
-| Helper | `SMAppService` runs the embedded sandboxed login item and an App Group mailbox carries occurrence-identified mount events. | Structural and deterministic tests pass; signed runtime needs the two exact development profiles. |
+| Helper | `SMAppService` runs the embedded sandboxed login item and an App Group mailbox carries occurrence-identified mount events. | Structural and deterministic tests pass, and both exact development profiles are installed. The signed runtime is waiting on explicit Login Items approval in a clean QA account. |
 | Bookmarks | Source and destination access comes only from user-selected read/write security scopes. Fresh bookmarks restore across relaunch; stale bookmarks are rejected until a new selection. | Synthetic signed import/relaunch passed; revoked and stale repair UI remains a clean-account gate. |
 | `/Volumes` assumptions | `/Volumes` is only a mount-root discovery/default placeholder and direct-edition ejection boundary. It is not treated as App Store content authorization. | Source enumeration is downstream of `ensureSourceAccessForScan`; the MAS archive has no filesystem exception entitlement. |
 | Ejection | Not offered and guarded out of model operations in the MAS edition. | Edition policy and focused tests pass; direct behavior remains intact. |
@@ -160,6 +161,10 @@ This second wrapper requires exact Apple Development profiles for both
 `media.jenny.sdimport` and `media.jenny.sdimport.agent`, with
 `group.media.jenny.sdimport` enabled. It rejects Xcode's wildcard
 `Mac Team Provisioning Profile: *` before installing or registering anything.
+The MAS Debug targets intentionally use manual signing with the stable profile
+names `SD Import for Mac Development` and `SD Import Agent Development` so
+Xcode cannot silently fall back to a wildcard profile. Renew or regenerate the
+profiles under the same names to avoid a project-file change.
 It installs a clearly named temporary app below `/Applications`, registers its
 real embedded `SMAppService` login item, and mounts an isolated disk image. A
 Debug-only adapter injects one `MountedVolume` only after the production volume
@@ -194,8 +199,8 @@ Snapshot from 2026-08-31:
 | --- | --- | --- |
 | Sandboxed manual import | A standalone, development-provisioned MAS Debug app passed the runtime gate with App Sandbox, user-selected read/write, and the App Group entitlement, with no temporary exceptions. Real `NSOpenPanel` authorization, a one-JPEG scan, destination authorization, completed import, and copied-output verification passed. The App Store-shaped Release bundle and trusted Apple Distribution archive also pass their structural and strict signature verifiers. | Repeat with a physical removable card before submission. |
 | Bookmark persistence and revocation | The runtime gate relaunched the independently signed app, restored the selected synthetic source through its security-scoped bookmark without another folder panel, and completed a second scan. Core tests prove exact group-path selection, fail-closed missing-group behavior, one-for-one security-scope lifetime, and that the App Store edition refuses stale bookmarks until a new user selection while the direct edition retains refresh behavior. | Physical reinsertion plus stale-bookmark and revoked-permission repair UI in a clean provisioned QA account. |
-| No scan before consent | The shared mount policy test proves the App Store edition reads no capacity, performs no media probe, and sends no distributed-notification handoff before consent. Both helper and observer use that policy. A reproducible signed helper-consent gate now asserts the no-scan copy and absence of folder/review UI before and after declining. | Install exact App Group-enabled development profiles and pass the helper gate; then repeat with physical insertion. |
-| Sandboxed helper mailbox | Existing mailbox/causality tests plus App Group path tests pass. Both App IDs are assigned to the registered App Group. The real signed login item registered and launched, but the current wildcard Debug profile did not authorize App Group file creation; the new gate rejects that profile before installation. | Create/install exact Apple Development profiles for the app and helper, then pass helper registration, mailbox delivery, app wake, and consent/decline. Physical mount delivery remains separate. |
+| No scan before consent | The shared mount policy test proves the App Store edition reads no capacity, performs no media probe, and sends no distributed-notification handoff before consent. Both helper and observer use that policy. A reproducible signed helper-consent gate asserts the no-scan copy and absence of folder/review UI before and after declining. | The exact-profile run reached registration, but this QA account's Login Items record remained disabled and the helper did not launch. Approve it in a clean QA account, pass the gate, then repeat with physical insertion. |
+| Sandboxed helper mailbox | Existing mailbox/causality tests plus App Group path tests pass. Both App IDs are assigned to the registered App Group. Exact device-scoped development profiles are installed, and the wrapper proved that both built bundles embed those exact identifiers and App Group entitlements and use the usable Apple Development identity. | On 2026-08-31 macOS reported the helper record as `disabled, allowed, notified`; explicit Login Items approval is required before registration, mailbox delivery, app wake, and consent/decline can be exercised. Physical mount delivery remains separate. |
 | StoreKit | Six app-hosted local StoreKit tests pass with no skips; purchase/refund and restore each passed 10 repeated focused runs. Core policy covers free allowance and cancellation. Restore checks current entitlements first and falls back only to Apple's verified, non-revoked latest transaction for the exact product after an explicit sync; verification failure remains fail-closed. | Sandbox/TestFlight purchase and restore after the IAP exists in App Store Connect. |
 | Both editions | 230 tests in 35 suites pass; direct and App Store Release builds succeed; direct Sparkle packaging and identifiers remain intact. | None locally. |
 | Archive inspection | A fresh exact-head Apple Distribution archive after the stale-bookmark policy change passes the strict verifier: exact app/helper identifiers and profiles, team and App Group, universal binaries, sandbox entitlements, privacy manifests, lifetime product ID, helper placement, test-artifact exclusion, and no Sparkle. | None locally. Repeat against the final version/build numbers before upload. |
@@ -216,7 +221,7 @@ alone is therefore still insufficient; the verifier result is the evidence.
 
 ## Apple Account Setup
 
-Completed in the Apple Developer account on 2026-08-30:
+Completed in the Apple Developer account through 2026-08-31:
 
 - Registered explicit App IDs `media.jenny.sdimport` and
   `media.jenny.sdimport.agent`.
@@ -228,32 +233,29 @@ Completed in the Apple Developer account on 2026-08-30:
 - Restored the matching `YTAJ6D4BV2` Apple Distribution identity and private
   key to this Mac's login Keychain, verified it with a disposable signing probe,
   and used it for a successful strict archive.
+- Created and installed `SD Import for Mac Development` and
+  `SD Import Agent Development` for this Mac. They expire 2027-08-31, embed the
+  usable Apple Development identity, authorize the exact app identifiers, and
+  contain `group.media.jenny.sdimport`.
 
-The installed Debug profile is still Xcode's wildcard
-`Mac Team Provisioning Profile: *`; it does not authorize the App Group. The
-two distribution profiles cannot be used for local runtime QA because macOS
+The two distribution profiles cannot be used for local runtime QA because macOS
 does not launch App Store distribution builds outside App Store/TestFlight.
-Create and install exact Apple Development profiles for the app and helper
-before running `script/run_mas_helper_runtime_qa.sh`.
 
 These owner actions remain and are intentionally not performed by build
 scripts:
 
-1. Create and install exact Apple Development profiles for
-   `media.jenny.sdimport` and `media.jenny.sdimport.agent`, each authorizing
-   `group.media.jenny.sdimport`, for the local helper runtime gate.
-2. Create the macOS app record in App Store Connect with
+1. Create the macOS app record in App Store Connect with
    `media.jenny.sdimport`.
-3. Create the non-consumable IAP `media.jenny.sdimport.unlimited`, including
+2. Create the non-consumable IAP `media.jenny.sdimport.unlimited`, including
    price, localization, review screenshot, and review notes.
-4. Complete paid-app agreements, tax, and banking requirements before testing
+3. Complete paid-app agreements, tax, and banking requirements before testing
    or selling the IAP.
-5. Complete App Privacy, age rating, category, support URL, privacy URL,
+4. Complete App Privacy, age rating, category, support URL, privacy URL,
    screenshots, description, and review contact fields from the shipped build's
    behavior.
-6. Attach the IAP to the first app-version submission when App Store Connect
+5. Attach the IAP to the first app-version submission when App Store Connect
    requires it.
-7. Publish the updated `docs/privacy.html` and `docs/support.html` before
+6. Publish the updated `docs/privacy.html` and `docs/support.html` before
    submission. The production URLs respond, but as of 2026-08-30 they still
    serve the pre-App-Store disclosures from 2026-07-31.
 

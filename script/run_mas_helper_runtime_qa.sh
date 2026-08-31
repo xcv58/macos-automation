@@ -112,9 +112,8 @@ verify_development_profile() {
   [[ "$(plist_value "$PROFILE_PLIST" 'Entitlements.com\.apple\.security\.application-groups.0')" \
     == group.media.jenny.sdimport ]] \
     || fail "the profile in $bundle does not authorize group.media.jenny.sdimport"
-  [[ "$(plist_value "$PROFILE_PLIST" 'Entitlements.com\.apple\.security\.get-task-allow')" \
-    == true ]] \
-    || fail "the profile in $bundle is not a runnable development profile"
+  [[ -n "$(plist_value "$PROFILE_PLIST" 'ProvisionedDevices.0')" ]] \
+    || fail "the profile in $bundle is not a device-scoped development profile"
 
   /usr/bin/codesign -d --entitlements - --xml "$bundle" >"$SIGNED_ENTITLEMENTS_PLIST" 2>/dev/null
   [[ "$(plist_value "$SIGNED_ENTITLEMENTS_PLIST" \
@@ -153,5 +152,11 @@ DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}" \
     "$ROOT_DIR/script/mas_runtime_qa.swift" \
     -o "$DRIVER_BINARY"
 
-"$DRIVER_BINARY" helper "$INSTALLED_APP" "$MOUNT_POINT"
+if ! "$DRIVER_BINARY" helper "$INSTALLED_APP" "$MOUNT_POINT"; then
+  echo 'Current macOS Background Task Management record for the MAS helper:' >&2
+  /usr/bin/sfltool dumpbtm 2>/dev/null \
+    | /usr/bin/grep -B 8 -A 4 'Identifier: 4\.media\.jenny\.sdimport\.agent' >&2 \
+    || true
+  fail 'signed helper runtime driver did not complete; a disabled disposition requires explicit Login Items approval'
+fi
 echo 'The OS mount detector was intentionally bypassed after detection; a physical removable-card gate remains.'

@@ -41,6 +41,10 @@ targets:
         PRODUCT_NAME: SDImportAgent
         SKIP_INSTALL: YES
       configs:
+        Debug:
+          CODE_SIGN_IDENTITY: Apple Development
+          CODE_SIGN_STYLE: Manual
+          PROVISIONING_PROFILE_SPECIFIER: SD Import Agent Development
         Release:
           CODE_SIGN_IDENTITY: Apple Distribution
           CODE_SIGN_STYLE: Manual
@@ -86,6 +90,10 @@ targets:
         PRODUCT_NAME: SD Import for Mac
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) SDIMPORT_MAC_APP_STORE"
       configs:
+        Debug:
+          CODE_SIGN_IDENTITY: Apple Development
+          CODE_SIGN_STYLE: Manual
+          PROVISIONING_PROFILE_SPECIFIER: SD Import for Mac Development
         Release:
           CODE_SIGN_IDENTITY: Apple Distribution
           CODE_SIGN_STYLE: Manual
