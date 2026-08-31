@@ -1,24 +1,34 @@
 import Foundation
+import SDImportCore
+#if SDIMPORT_DIRECT
 import Sparkle
+#endif
 import SwiftUI
 
 @MainActor
 final class AppUpdater: ObservableObject {
+#if SDIMPORT_DIRECT
     private let updaterController: SPUStandardUpdaterController?
+#endif
 
     @Published var automaticallyChecksForUpdates: Bool {
         didSet {
+#if SDIMPORT_DIRECT
             updater?.automaticallyChecksForUpdates = automaticallyChecksForUpdates
+#endif
         }
     }
 
     @Published var automaticallyDownloadsUpdates: Bool {
         didSet {
+#if SDIMPORT_DIRECT
             updater?.automaticallyDownloadsUpdates = automaticallyDownloadsUpdates
+#endif
         }
     }
 
     init(bundle: Bundle = .main) {
+#if SDIMPORT_DIRECT
         let controller: SPUStandardUpdaterController?
         if Self.isConfigured(in: bundle) {
             controller = SPUStandardUpdaterController(
@@ -33,12 +43,41 @@ final class AppUpdater: ObservableObject {
         updaterController = controller
         automaticallyChecksForUpdates = controller?.updater.automaticallyChecksForUpdates ?? false
         automaticallyDownloadsUpdates = controller?.updater.automaticallyDownloadsUpdates ?? false
+#else
+        automaticallyChecksForUpdates = false
+        automaticallyDownloadsUpdates = false
+#endif
     }
 
+#if SDIMPORT_DIRECT
     var updater: SPUUpdater? {
         updaterController?.updater
     }
+#endif
 
+    var isAvailable: Bool {
+#if SDIMPORT_DIRECT
+        updater != nil
+#else
+        false
+#endif
+    }
+
+    var canCheckForUpdates: Bool {
+#if SDIMPORT_DIRECT
+        updater?.canCheckForUpdates ?? false
+#else
+        false
+#endif
+    }
+
+    func checkForUpdates() {
+#if SDIMPORT_DIRECT
+        updater?.checkForUpdates()
+#endif
+    }
+
+#if SDIMPORT_DIRECT
     private static func isConfigured(in bundle: Bundle) -> Bool {
         guard
             let feedURL = bundle.object(forInfoDictionaryKey: "SUFeedURL") as? String,
@@ -50,35 +89,24 @@ final class AppUpdater: ObservableObject {
         let trimmedPublicKey = publicKey.trimmingCharacters(in: .whitespacesAndNewlines)
         return URL(string: feedURL)?.scheme == "https" && Data(base64Encoded: trimmedPublicKey) != nil
     }
+#endif
 }
 
 struct CheckForUpdatesView: View {
-    private let updater: SPUUpdater?
+    @ObservedObject private var updater: AppUpdater
 
-    init(updater: SPUUpdater?) {
+    init(updater: AppUpdater) {
         self.updater = updater
     }
 
     var body: some View {
-        if let updater {
-            EnabledCheckForUpdatesView(updater: updater)
+        if updater.isAvailable {
+            Button("Check for Updates...", action: updater.checkForUpdates)
+                .disabled(!updater.canCheckForUpdates)
         } else {
             Button("Check for Updates...") {}
                 .disabled(true)
         }
-    }
-}
-
-private struct EnabledCheckForUpdatesView: View {
-    private let updater: SPUUpdater
-
-    init(updater: SPUUpdater) {
-        self.updater = updater
-    }
-
-    var body: some View {
-        Button("Check for Updates...", action: updater.checkForUpdates)
-            .disabled(!updater.canCheckForUpdates)
     }
 }
 
@@ -93,7 +121,7 @@ struct UpdaterSettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if appUpdater.updater != nil {
+            if appUpdater.isAvailable {
                 Toggle(
                     "Automatically check for updates",
                     isOn: $appUpdater.automaticallyChecksForUpdates
@@ -105,7 +133,11 @@ struct UpdaterSettingsView: View {
                 )
                 .disabled(!appUpdater.automaticallyChecksForUpdates)
             } else {
-                Text("Updates are not configured for this build.")
+                Text(
+                    AppDistribution.current == .macAppStore
+                        ? "Updates are delivered by the App Store."
+                        : "Updates are not configured for this build."
+                )
                     .foregroundStyle(.secondary)
             }
         }

@@ -1,4 +1,5 @@
 import AppKit
+import SDImportCommerce
 import SDImportCore
 import SwiftUI
 
@@ -9,10 +10,13 @@ struct SDImportApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var model: AppModel
     @StateObject private var appUpdater = AppUpdater()
+    @StateObject private var purchaseManager: PurchaseManager
 
     init() {
-        let model = AppModel()
+        let purchaseManager = PurchaseManager()
+        let model = AppModel(purchaseManager: purchaseManager)
         _model = StateObject(wrappedValue: model)
+        _purchaseManager = StateObject(wrappedValue: purchaseManager)
         ApplicationLifecycleCoordinator.shared.install(
             didBecomeActive: { [weak model] in
                 model?.applicationDidBecomeActive()
@@ -30,6 +34,7 @@ struct SDImportApp: App {
         Window("SD Import", id: "main") {
             RootView(appUpdater: appUpdater)
                 .environmentObject(model)
+                .environmentObject(purchaseManager)
                 .preferredColorScheme(model.themePreference.colorScheme)
                 .frame(minWidth: 760, minHeight: 560)
                 .background(MainWindowIdentifierView())
@@ -55,7 +60,7 @@ struct SDImportApp: App {
             }
 
             CommandGroup(after: .appInfo) {
-                CheckForUpdatesView(updater: appUpdater.updater)
+                CheckForUpdatesView(updater: appUpdater)
             }
 
             CommandGroup(replacing: .newItem) {

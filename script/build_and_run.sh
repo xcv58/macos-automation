@@ -92,7 +92,8 @@ stage_app() {
       /usr/bin/install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP_BINARY"
     fi
   fi
-  swift "$ROOT_DIR/script/generate_icon.swift" "$APP_ICON"
+  CLANG_MODULE_CACHE_PATH="$PACKAGE_DIR/.build/ModuleCache" \
+    swift "$ROOT_DIR/script/generate_icon.swift" "$APP_ICON"
 
   sparkle_plist=""
   if [[ -n "$SPARKLE_FEED_URL" && -n "$SPARKLE_PUBLIC_ED_KEY" ]]; then
@@ -132,6 +133,8 @@ PLIST
   <string>$MIN_SYSTEM_VERSION</string>
   <key>NSPrincipalClass</key>
   <string>NSApplication</string>
+  <key>SDImportDistribution</key>
+  <string>direct</string>
   <key>SUAllowsAutomaticUpdates</key>
   <true/>
   <key>SUAutomaticallyUpdate</key>
@@ -176,6 +179,8 @@ PLIST
   <true/>
   <key>NSPrincipalClass</key>
   <string>NSApplication</string>
+  <key>SDImportDistribution</key>
+  <string>direct</string>
 </dict>
 </plist>
 PLIST

@@ -9,4 +9,5 @@ raycast-extension/.output/
 
 .build/
 SDImport/Packages/*/.build/
+SDImport/.derived-data-app-store/
 dist/

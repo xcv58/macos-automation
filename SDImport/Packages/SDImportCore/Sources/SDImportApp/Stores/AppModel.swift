@@ -1,10 +1,12 @@
 import AppKit
 import Foundation
 import OSLog
+import SDImportCommerce
 import SDImportCore
 
-private let importLogger = Logger(subsystem: "com.xcv58.SDImport", category: "Import")
-private let diagnosticsLogger = Logger(subsystem: "com.xcv58.SDImport", category: "Diagnostics")
+private let appLogSubsystem = Bundle.main.bundleIdentifier ?? "com.xcv58.SDImport"
+private let importLogger = Logger(subsystem: appLogSubsystem, category: "Import")
+private let diagnosticsLogger = Logger(subsystem: appLogSubsystem, category: "Diagnostics")
 
 typealias ImportPreviewSession = ImportPlanSession
 
@@ -267,6 +269,7 @@ final class AppModel: ObservableObject {
     @Published var setupError: String?
 
     private let defaults = UserDefaults.standard
+    private let purchaseManager: PurchaseManager
     private var initialOnboardingSourcePath: String
     private var applicationSupportURL: URL?
     private var reportsURL: URL?
@@ -275,6 +278,7 @@ final class AppModel: ObservableObject {
     private var dedupeRepository: DedupeRepository?
     private var settingsRepository: SettingsRepository?
     private var bookmarkStore: BookmarkStore?
+    private var folderAccesses: [BookmarkPurpose: SecurityScopedResourceAccess] = [:]
     private var importTask: Task<Void, Never>?
     private var historyRefreshTask: Task<Void, Never>?
     private var historyDetailTask: Task<Void, Never>?
@@ -302,7 +306,8 @@ final class AppModel: ObservableObject {
         }
     }
 
-    init() {
+    init(purchaseManager: PurchaseManager) {
+        self.purchaseManager = purchaseManager
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         let storedSourcePath = defaults.string(forKey: DefaultsKeys.cardPath) ?? "/Volumes"
         let storedPhotosPath = defaults.string(forKey: DefaultsKeys.photosPath) ?? "\(home)/Pictures/Photos"
@@ -334,7 +339,8 @@ final class AppModel: ObservableObject {
         self.location = storedShootName
         self.historyRetention = .defaultPolicy
         self.autoPromptEnabled = defaults.bool(forKey: DefaultsKeys.autoPromptEnabled)
-        self.ejectAfterSuccessfulImport = defaults.bool(forKey: DefaultsKeys.ejectAfterSuccessfulImport)
+        self.ejectAfterSuccessfulImport = AppDistribution.current.supportsSourceEjection
+            && defaults.bool(forKey: DefaultsKeys.ejectAfterSuccessfulImport)
         self.portableImportReceiptsEnabled = defaults.bool(forKey: DefaultsKeys.portableImportReceiptsEnabled)
         self.hasCompletedOnboarding = defaults.bool(forKey: DefaultsKeys.hasCompletedOnboarding)
         self.workflowProfile = storedWorkflowProfile
@@ -376,30 +382,35 @@ final class AppModel: ObservableObject {
             settingsRepository = SettingsRepository(pool: pool)
             bookmarkStore = BookmarkStore(pool: pool)
             let legacyImportMessage: String?
-            do {
-                let summary = try LegacyStateImporter(
-                    legacyLocation: LegacyStateImporter.defaultLegacyLocation(),
-                    nativeStateDirectory: stateURL
-                ).importLegacyState(
-                    into: pool,
-                    defaultPhotosRoot: expanded(photosPath),
-                    defaultVideosRoot: expanded(videosPath)
-                )
+            if AppDistribution.current.importsUnsandboxedLegacyState {
+                do {
+                    let summary = try LegacyStateImporter(
+                        legacyLocation: LegacyStateImporter.defaultLegacyLocation(),
+                        nativeStateDirectory: stateURL
+                    ).importLegacyState(
+                        into: pool,
+                        defaultPhotosRoot: expanded(photosPath),
+                        defaultVideosRoot: expanded(videosPath)
+                    )
 
-                if summary.didImport {
-                    let importedRecords = summary.jobsImported
-                        + summary.jobFilesImported
-                        + summary.nativeFingerprintsImported
-                    legacyImportMessage = importedRecords > 0
-                        ? "Imported legacy SD Import history"
-                        : "Imported legacy SD Import settings"
-                } else {
-                    legacyImportMessage = nil
+                    if summary.didImport {
+                        let importedRecords = summary.jobsImported
+                            + summary.jobFilesImported
+                            + summary.nativeFingerprintsImported
+                        legacyImportMessage = importedRecords > 0
+                            ? "Imported legacy SD Import history"
+                            : "Imported legacy SD Import settings"
+                    } else {
+                        legacyImportMessage = nil
+                    }
+                } catch {
+                    legacyImportMessage = "Legacy import skipped: \(error)"
                 }
-            } catch {
-                legacyImportMessage = "Legacy import skipped: \(error)"
+            } else {
+                legacyImportMessage = nil
             }
             try loadStoredConfiguration()
+            refreshFolderAccesses()
             let recovery = try RecoveryService(jobRepository: JobRepository(pool: pool))
                 .recoverInterruptedImports()
             refreshAvailableSourceVolumes()
@@ -428,9 +439,21 @@ final class AppModel: ObservableObject {
     @discardableResult
     func savePreferences(
         refreshFolderBookmarks: Bool = false,
+        folderBookmarkPurposes: Set<BookmarkPurpose>? = nil,
         persistAutoPromptPreference: Bool = false
     ) -> Bool {
         settingsFeedback = nil
+        let bookmarkPurposes = refreshFolderBookmarks
+            ? folderBookmarkPurposes ?? Set(BookmarkPurpose.allCases)
+            : []
+        if AppDistribution.current == .macAppStore {
+            for purpose in bookmarkPurposes where !hasActiveFolderAccess(covering: folderPath(for: purpose)) {
+                let error = FolderAccessAuthorizationError(purpose: purpose)
+                statusMessage = Self.errorMessage(for: error)
+                settingsFeedback = SettingsFeedback(message: statusMessage, role: .error)
+                return false
+            }
+        }
         do {
             if persistAutoPromptPreference {
                 try settingsRepository?.saveConfiguration(currentConfiguration())
@@ -463,102 +486,121 @@ final class AppModel: ObservableObject {
         defaults.set(importDefaults.folderGrouping.rawValue, forKey: DefaultsKeys.folderGrouping)
         defaults.set(themePreference.rawValue, forKey: DefaultsKeys.themePreference)
 
-        guard refreshFolderBookmarks else {
+        guard !bookmarkPurposes.isEmpty else {
             return true
         }
 
         do {
-            try saveFolderBookmark(.source, path: cardPath)
-            try saveFolderBookmark(.photos, path: importDefaults.photosPath)
-            try saveFolderBookmark(.videos, path: importDefaults.videosPath)
+            for purpose in bookmarkPurposes {
+                try saveFolderBookmark(purpose, path: folderPath(for: purpose))
+            }
         } catch {
             statusMessage = "Settings saved, but folder access could not be refreshed: \(error)"
             settingsFeedback = SettingsFeedback(message: statusMessage, role: .error)
-            return true
+            return AppDistribution.current != .macAppStore
         }
         return true
     }
 
     func chooseCardFolder() {
-        if let path = FilePanelPresenter.chooseDirectory(title: "Choose SD Card or Source Folder", initialPath: cardPath) {
-            unhideRecentPath(path)
-            cardPath = path
-            sourcePathDidChange()
-            savePreferences(refreshFolderBookmarks: true)
+        guard let url = FilePanelPresenter.chooseDirectoryURL(
+            title: "Choose SD Card or Source Folder",
+            initialPath: cardPath
+        ), retainSelectedFolderAccess(.source, url: url, persistBookmark: true) else {
+            return
         }
+        unhideRecentPath(url.path)
+        cardPath = url.path
+        sourcePathDidChange()
+        savePreferences()
     }
 
     func chooseOnboardingCardFolder() {
-        if let path = FilePanelPresenter.chooseDirectory(
+        guard let url = FilePanelPresenter.chooseDirectoryURL(
             title: "Choose SD Card or Source Folder",
             initialPath: cardPath
-        ) {
-            cardPath = path
-            sourcePathDidChange()
+        ), retainSelectedFolderAccess(.source, url: url, persistBookmark: true) else {
+            return
         }
+        cardPath = url.path
+        sourcePathDidChange()
     }
 
     func chooseOnboardingPhotosFolder() {
-        if let path = FilePanelPresenter.chooseDirectory(
+        guard let url = FilePanelPresenter.chooseDirectoryURL(
             title: "Choose Photo Destination",
             initialPath: photosPath
-        ) {
-            photosPath = path
-            destinationPathDidChange()
+        ), retainSelectedFolderAccess(.photos, url: url, persistBookmark: true) else {
+            return
         }
+        photosPath = url.path
+        destinationPathDidChange()
     }
 
     func chooseOnboardingVideosFolder() {
-        if let path = FilePanelPresenter.chooseDirectory(
+        guard let url = FilePanelPresenter.chooseDirectoryURL(
             title: "Choose Video Destination",
             initialPath: videosPath
-        ) {
-            videosPath = path
-            destinationPathDidChange()
+        ), retainSelectedFolderAccess(.videos, url: url, persistBookmark: true) else {
+            return
         }
+        videosPath = url.path
+        destinationPathDidChange()
     }
 
     func choosePhotosFolder() {
-        if let path = FilePanelPresenter.chooseDirectory(title: "Choose Photo Destination", initialPath: photosPath) {
-            unhideRecentPath(path)
-            photosPath = path
-            destinationPathDidChange()
+        guard let url = FilePanelPresenter.chooseDirectoryURL(
+            title: "Choose Photo Destination",
+            initialPath: photosPath
+        ), retainSelectedFolderAccess(.photos, url: url, persistBookmark: false) else {
+            return
         }
+        unhideRecentPath(url.path)
+        photosPath = url.path
+        destinationPathDidChange()
     }
 
     func chooseVideosFolder() {
-        if let path = FilePanelPresenter.chooseDirectory(title: "Choose Video Destination", initialPath: videosPath) {
-            unhideRecentPath(path)
-            videosPath = path
-            destinationPathDidChange()
+        guard let url = FilePanelPresenter.chooseDirectoryURL(
+            title: "Choose Video Destination",
+            initialPath: videosPath
+        ), retainSelectedFolderAccess(.videos, url: url, persistBookmark: false) else {
+            return
         }
+        unhideRecentPath(url.path)
+        videosPath = url.path
+        destinationPathDidChange()
     }
 
     func chooseDefaultPhotosFolder() {
-        if let path = FilePanelPresenter.chooseDirectory(
+        guard let url = FilePanelPresenter.chooseDirectoryURL(
             title: "Choose Default Photo Destination",
             initialPath: importDefaults.photosPath
-        ) {
-            importDefaults.photosPath = path
-            defaultDestinationPathDidChange()
-            savePreferences(refreshFolderBookmarks: true)
+        ), retainSelectedFolderAccess(.photos, url: url, persistBookmark: true) else {
+            return
         }
+        importDefaults.photosPath = url.path
+        defaultDestinationPathDidChange()
+        savePreferences()
     }
 
     func chooseDefaultVideosFolder() {
-        if let path = FilePanelPresenter.chooseDirectory(
+        guard let url = FilePanelPresenter.chooseDirectoryURL(
             title: "Choose Default Video Destination",
             initialPath: importDefaults.videosPath
-        ) {
-            importDefaults.videosPath = path
-            defaultDestinationPathDidChange()
-            savePreferences(refreshFolderBookmarks: true)
+        ), retainSelectedFolderAccess(.videos, url: url, persistBookmark: true) else {
+            return
         }
+        importDefaults.videosPath = url.path
+        defaultDestinationPathDidChange()
+        savePreferences()
     }
 
     func refreshAvailableSourceVolumes() {
         let detector = VolumeDetector()
-        mountedVolumesSnapshot = detector.allMountedVolumes()
+        mountedVolumesSnapshot = detector.allMountedVolumes(
+            includeCapacity: !AppDistribution.current.requiresConsentBeforeMediaProbe
+        )
         availableSourceVolumes = detector.likelyImportVolumes(from: mountedVolumesSnapshot)
         rebuildSourceEjectionTargetCache()
         rebuildRecentImportSuggestions()
@@ -573,11 +615,13 @@ final class AppModel: ObservableObject {
     }
 
     var shouldOfferSelectedSourceEjection: Bool {
-        cachedSelectedSourceEjectionTarget != nil
+        AppDistribution.current.supportsSourceEjection
+            && cachedSelectedSourceEjectionTarget != nil
     }
 
     var canEjectSelectedSource: Bool {
-        !isWorking
+        AppDistribution.current.supportsSourceEjection
+            && !isWorking
             && !isEjectingSource
             && cachedSelectedSourceEjectionTarget != nil
     }
@@ -596,7 +640,12 @@ final class AppModel: ObservableObject {
     }
 
     func ejectSelectedSource() {
-        guard !isWorking, !isEjectingSource, let target = cachedSelectedSourceEjectionTarget else {
+        guard
+            AppDistribution.current.supportsSourceEjection,
+            !isWorking,
+            !isEjectingSource,
+            let target = cachedSelectedSourceEjectionTarget
+        else {
             statusMessage = "Source cannot be ejected safely"
             return
         }
@@ -750,7 +799,10 @@ final class AppModel: ObservableObject {
             folderGrouping: folderGrouping
         )
         validateDefaultPaths()
-        if savePreferences(refreshFolderBookmarks: true) {
+        if savePreferences(
+            refreshFolderBookmarks: true,
+            folderBookmarkPurposes: Set([.source] + requiredDestinationPurposes())
+        ) {
             if settingsFeedback == nil {
                 statusMessage = "Import settings saved as defaults"
             }
@@ -770,6 +822,8 @@ final class AppModel: ObservableObject {
         preferredMixedDestinationLayout = importDefaults.preferredMixedDestinationLayout
         folderGrouping = importDefaults.folderGrouping
         organizationPreset = destinationLayout.organizationPreset
+        refreshFolderAccess(.photos)
+        refreshFolderAccess(.videos)
         validatePaths()
     }
 
@@ -808,7 +862,10 @@ final class AppModel: ObservableObject {
 
         defaultPhotosValidation = results.0
         defaultVideosValidation = results.1
-        savePreferences(refreshFolderBookmarks: true)
+        savePreferences(
+            refreshFolderBookmarks: true,
+            folderBookmarkPurposes: [.photos, .videos]
+        )
     }
 
     var canScan: Bool {
@@ -860,6 +917,9 @@ final class AppModel: ObservableObject {
     func scan() {
         guard !isWorking, !isEjectingSource else {
             statusMessage = "Finish the current scan or import first"
+            return
+        }
+        guard ensureSourceAccessForScan() else {
             return
         }
         guard let databaseURL else {
@@ -1403,8 +1463,16 @@ final class AppModel: ObservableObject {
             statusMessage = "Finish the current scan or import first"
             return
         }
+        guard purchaseManager.canStartImport else {
+            purchaseManager.isShowingPurchase = true
+            statusMessage = "Unlock unlimited imports to continue"
+            return
+        }
         guard let currentSummary else {
             statusMessage = "No scanned job selected"
+            return
+        }
+        guard ensureRequiredDestinationAccessForImport() else {
             return
         }
         let jobID = currentSummary.jobID
@@ -1648,6 +1716,7 @@ final class AppModel: ObservableObject {
                         return
                     }
                     self.currentResult = result
+                    self.purchaseManager.recordSuccessfulImport(result)
                     self.importProgress = nil
                     self.jobs = jobs
                     self.selectedJobID = jobID
@@ -1834,9 +1903,42 @@ final class AppModel: ObservableObject {
         guard let volume = pendingMountedVolume else {
             return
         }
+        let sourceURL: URL
+        if AppDistribution.current == .macAppStore {
+            if let authorizedURL = authorizedSourceURL(for: volume) {
+                sourceURL = authorizedURL
+            } else {
+                guard let selectedURL = FilePanelPresenter.chooseDirectoryURL(
+                    title: "Allow Access to \(volume.name)",
+                    initialPath: volume.mountURL.path,
+                    prompt: "Allow Access",
+                    message: "SD Import will scan this folder only after you allow access."
+                ) else {
+                    pendingMountedVolume = nil
+                    statusMessage = "Card scan cancelled"
+                    return
+                }
+                guard Self.isSameOrDescendant(selectedURL, of: volume.mountURL) else {
+                    statusMessage = "Choose \(volume.name) or a folder on that card"
+                    return
+                }
+                guard retainSelectedFolderAccess(
+                    .source,
+                    url: selectedURL,
+                    persistBookmark: true
+                ) else {
+                    pendingMountedVolume = nil
+                    return
+                }
+                sourceURL = selectedURL
+            }
+        } else {
+            sourceURL = volume.mountURL
+        }
+
         pendingMountedVolume = nil
         selection = .import
-        cardPath = volume.mountURL.path
+        cardPath = sourceURL.path
         sourcePathDidChange()
         savePreferences()
         scan()
@@ -2599,8 +2701,16 @@ final class AppModel: ObservableObject {
             statusMessage = "Finish the current scan or import first"
             return
         }
-        guard selectedJob()?.canRetryImport == true else {
+        guard purchaseManager.canStartImport else {
+            purchaseManager.isShowingPurchase = true
+            statusMessage = "Unlock unlimited imports to continue"
+            return
+        }
+        guard let job = selectedJob(), job.canRetryImport else {
             statusMessage = "Only failed, cancelled, or partial imports can be retried"
+            return
+        }
+        guard ensureAccessForRetryingJob(job) else {
             return
         }
         guard let databaseURL else {
@@ -2630,7 +2740,11 @@ final class AppModel: ObservableObject {
             preferredMixedDestinationLayout: preferredMixedDestinationLayout,
             folderGrouping: folderGrouping
         )
-        guard savePreferences(refreshFolderBookmarks: true, persistAutoPromptPreference: true) else {
+        guard savePreferences(
+            refreshFolderBookmarks: true,
+            folderBookmarkPurposes: activeFolderAccessPurposes(),
+            persistAutoPromptPreference: true
+        ) else {
             hasCompletedOnboarding = false
             importDefaults = previousDefaults
             validateDefaultPaths()
@@ -2800,6 +2914,10 @@ final class AppModel: ObservableObject {
     }
 
     func revealCrashReportsFolder() {
+        guard AppDistribution.current.canBrowseSystemCrashReports else {
+            statusMessage = "Crash reports remain available in macOS Console"
+            return
+        }
         let directory = CrashReportLocator.defaultDirectory()
         guard FileManager.default.fileExists(atPath: directory.path) else {
             statusMessage = "No crash report folder found"
@@ -2812,6 +2930,10 @@ final class AppModel: ObservableObject {
     }
 
     func exportLatestCrashReport() {
+        guard AppDistribution.current.canBrowseSystemCrashReports else {
+            statusMessage = "Crash reports remain available in macOS Console"
+            return
+        }
         guard let report = CrashReportLocator.findReports(limit: 1).first else {
             statusMessage = "No SD Import crash reports found"
             return
@@ -2890,6 +3012,9 @@ final class AppModel: ObservableObject {
     }
 
     func shouldOfferSourceEjection(for result: ImportResult) -> Bool {
+        guard AppDistribution.current.supportsSourceEjection else {
+            return false
+        }
         guard ejectedSourceJobID != result.jobID else {
             return true
         }
@@ -2897,7 +3022,8 @@ final class AppModel: ObservableObject {
     }
 
     func canEjectSource(for result: ImportResult) -> Bool {
-        !isEjectingSource
+        AppDistribution.current.supportsSourceEjection
+            && !isEjectingSource
             && ejectedSourceJobID != result.jobID
             && cachedResultSourceEjectionTargets[result.jobID] != nil
     }
@@ -2917,7 +3043,11 @@ final class AppModel: ObservableObject {
     }
 
     func ejectSource(for result: ImportResult) {
-        guard !isEjectingSource, let target = cachedResultSourceEjectionTargets[result.jobID] else {
+        guard
+            AppDistribution.current.supportsSourceEjection,
+            !isEjectingSource,
+            let target = cachedResultSourceEjectionTargets[result.jobID]
+        else {
             statusMessage = "Source cannot be ejected safely"
             return
         }
@@ -2926,6 +3056,10 @@ final class AppModel: ObservableObject {
     }
 
     private func ejectSource(jobID: String, target: SourceEjectionTarget) {
+        guard AppDistribution.current.supportsSourceEjection else {
+            statusMessage = "Eject the source in Finder"
+            return
+        }
         guard !isWorking, !isEjectingSource else {
             statusMessage = "Finish the current operation before ejecting"
             return
@@ -3066,10 +3200,16 @@ final class AppModel: ObservableObject {
         let info = Bundle.main.infoDictionary ?? [:]
         let appVersion = info["CFBundleShortVersionString"] as? String ?? "dev"
         let appBuild = info["CFBundleVersion"] as? String ?? "dev"
+#if SDIMPORT_DIRECT
         let updateFeedConfigured = (info["SUFeedURL"] as? String)?.isEmpty == false
             && (info["SUPublicEDKey"] as? String)?.isEmpty == false
+#else
+        let updateFeedConfigured = false
+#endif
         let crashReportDirectory = CrashReportLocator.defaultDirectory()
-        let recentCrashReports = CrashReportLocator.findReports(in: crashReportDirectory, limit: 5)
+        let recentCrashReports = AppDistribution.current.canBrowseSystemCrashReports
+            ? CrashReportLocator.findReports(in: crashReportDirectory, limit: 5)
+            : []
 
         return DiagnosticsReportSnapshot(
             generatedAt: Date(),
@@ -3153,21 +3293,27 @@ final class AppModel: ObservableObject {
         requiredDestinationValidations().allSatisfy(\.isUsable)
     }
 
-    private func requiredDestinationValidations() -> [PathValidationResult] {
+    private func requiredDestinationPurposes() -> [BookmarkPurpose] {
         switch organizationPreset {
         case .classicDatedFolders:
-            var validations: [PathValidationResult] = []
+            var purposes: [BookmarkPurpose] = []
             if importMediaSelection.includes(.photo) {
-                validations.append(photosValidation)
+                purposes.append(.photos)
             }
             if importMediaSelection.includes(.video) {
-                validations.append(videosValidation)
+                purposes.append(.videos)
             }
-            return validations
+            return purposes
         case .shootSessionsByDate:
-            return [photosValidation]
+            return [.photos]
         case .footageBackup:
-            return [videosValidation]
+            return [.videos]
+        }
+    }
+
+    private func requiredDestinationValidations() -> [PathValidationResult] {
+        requiredDestinationPurposes().map { purpose in
+            purpose == .photos ? photosValidation : videosValidation
         }
     }
 
@@ -3408,7 +3554,9 @@ final class AppModel: ObservableObject {
     }
 
     private func resolvedPath(for purpose: BookmarkPurpose, fallback: String) throws -> String {
-        bookmarkStore?.resolvedPath(purpose: purpose, fallback: fallback) ?? fallback
+        folderAccesses[purpose]?.url.path
+            ?? bookmarkStore?.resolvedPath(purpose: purpose, fallback: fallback)
+            ?? fallback
     }
 
     private func saveFolderBookmark(_ purpose: BookmarkPurpose, path: String) throws {
@@ -3418,7 +3566,224 @@ final class AppModel: ObservableObject {
             return
         }
         let url = URL(fileURLWithPath: validation.expandedPath, isDirectory: true)
-        try bookmarkStore?.saveBookmark(purpose: purpose, url: url)
+        guard let bookmarkStore else {
+            throw FolderAccessAuthorizationError(purpose: purpose)
+        }
+        try bookmarkStore.saveBookmark(purpose: purpose, url: url)
+        refreshFolderAccess(purpose)
+        if
+            AppDistribution.current == .macAppStore,
+            folderAccesses[purpose]?.isActive != true
+        {
+            throw FolderAccessAuthorizationError(purpose: purpose)
+        }
+    }
+
+    private func folderPath(for purpose: BookmarkPurpose) -> String {
+        switch purpose {
+        case .source:
+            cardPath
+        case .photos:
+            importDefaults.photosPath
+        case .videos:
+            importDefaults.videosPath
+        }
+    }
+
+    @discardableResult
+    private func retainSelectedFolderAccess(
+        _ purpose: BookmarkPurpose,
+        url: URL,
+        persistBookmark: Bool
+    ) -> Bool {
+        let priorAccess = folderAccesses[purpose]
+        do {
+            if persistBookmark {
+                guard let bookmarkStore else {
+                    throw FolderAccessAuthorizationError(purpose: purpose)
+                }
+                try bookmarkStore.saveBookmark(purpose: purpose, url: url)
+                refreshFolderAccess(purpose)
+            } else {
+                folderAccesses[purpose] = SecurityScopedResourceAccess(url: url)
+            }
+            if
+                AppDistribution.current == .macAppStore,
+                folderAccesses[purpose]?.isActive != true
+            {
+                throw FolderAccessAuthorizationError(purpose: purpose)
+            }
+            return true
+        } catch {
+            folderAccesses[purpose] = priorAccess
+            statusMessage = "Could not retain folder access: \(Self.errorMessage(for: error))"
+            settingsFeedback = SettingsFeedback(message: statusMessage, role: .error)
+            return false
+        }
+    }
+
+    private func ensureSourceAccessForScan() -> Bool {
+        guard AppDistribution.current == .macAppStore else {
+            return true
+        }
+        let sourcePath = expanded(cardPath)
+        if hasActiveFolderAccess(covering: sourcePath) {
+            return true
+        }
+        guard let selectedURL = FilePanelPresenter.chooseDirectoryURL(
+            title: "Allow Access to Source",
+            initialPath: sourcePath,
+            prompt: "Allow Access",
+            message: "Choose the card or source folder before SD Import scans it."
+        ) else {
+            statusMessage = "Card scan cancelled"
+            return false
+        }
+        guard retainSelectedFolderAccess(.source, url: selectedURL, persistBookmark: true) else {
+            return false
+        }
+        unhideRecentPath(selectedURL.path)
+        cardPath = selectedURL.path
+        sourcePathDidChange()
+        savePreferences()
+        return true
+    }
+
+    private func ensureRequiredDestinationAccessForImport() -> Bool {
+        guard AppDistribution.current == .macAppStore else {
+            return true
+        }
+        for purpose in requiredDestinationPurposes() {
+            let currentPath = purpose == .photos ? photosPath : videosPath
+            let expandedPath = expanded(currentPath)
+            if hasActiveFolderAccess(covering: expandedPath) {
+                continue
+            }
+            let displayName = purpose == .photos ? "Photo Destination" : "Video Destination"
+            guard let selectedURL = FilePanelPresenter.chooseDirectoryURL(
+                title: "Allow Access to \(displayName)",
+                initialPath: expandedPath,
+                prompt: "Allow Access",
+                message: "Choose the destination before SD Import copies files to it."
+            ) else {
+                statusMessage = "Import cancelled"
+                return false
+            }
+            guard retainSelectedFolderAccess(purpose, url: selectedURL, persistBookmark: false) else {
+                return false
+            }
+            unhideRecentPath(selectedURL.path)
+            if purpose == .photos {
+                photosPath = selectedURL.path
+            } else {
+                videosPath = selectedURL.path
+            }
+            destinationPathDidChange()
+        }
+        return true
+    }
+
+    private func ensureAccessForRetryingJob(_ job: ImportJob) -> Bool {
+        guard AppDistribution.current == .macAppStore else {
+            return true
+        }
+        let destinationDirectories = selectedJobFiles.compactMap(\.destinationDirectory)
+        var requests: [(purpose: BookmarkPurpose, path: String, title: String)] = [
+            (.source, job.mountPath, "Retry Source")
+        ]
+        let destinationRequests: [(purpose: BookmarkPurpose, path: String, title: String)] = [
+            (.photos, job.photosRoot, "Retry Photo Destination"),
+            (.videos, job.videosRoot, "Retry Video Destination")
+        ]
+        requests.append(contentsOf: destinationRequests.filter { request in
+            guard !destinationDirectories.isEmpty else {
+                return true
+            }
+            let rootURL = URL(fileURLWithPath: request.path, isDirectory: true)
+            return destinationDirectories.contains { directory in
+                Self.isSameOrDescendant(
+                    URL(fileURLWithPath: directory, isDirectory: true),
+                    of: rootURL
+                )
+            }
+        })
+        for request in requests where !request.path.isEmpty {
+            if hasActiveFolderAccess(covering: request.path) {
+                continue
+            }
+            guard let selectedURL = FilePanelPresenter.chooseDirectoryURL(
+                title: "Allow Access to \(request.title)",
+                initialPath: request.path,
+                prompt: "Allow Access",
+                message: "Choose this folder again so SD Import can retry the existing job."
+            ) else {
+                statusMessage = "Retry cancelled"
+                return false
+            }
+            let requestedURL = URL(fileURLWithPath: request.path, isDirectory: true)
+            guard Self.isSameOrDescendant(requestedURL, of: selectedURL) else {
+                statusMessage = "Choose \(request.path) or one of its parent folders"
+                return false
+            }
+            guard retainSelectedFolderAccess(
+                request.purpose,
+                url: selectedURL,
+                persistBookmark: false
+            ) else {
+                return false
+            }
+        }
+        return true
+    }
+
+    private func hasActiveFolderAccess(covering path: String) -> Bool {
+        let requestedURL = URL(fileURLWithPath: expanded(path), isDirectory: true)
+        return folderAccesses.values.contains { access in
+            access.isActive && Self.isSameOrDescendant(requestedURL, of: access.url)
+        }
+    }
+
+    private func activeFolderAccessPurposes() -> Set<BookmarkPurpose> {
+        Set(
+            BookmarkPurpose.allCases.filter { purpose in
+                hasActiveFolderAccess(covering: folderPath(for: purpose))
+            }
+        )
+    }
+
+    private func refreshFolderAccesses() {
+        for purpose in BookmarkPurpose.allCases {
+            refreshFolderAccess(purpose)
+        }
+    }
+
+    private func refreshFolderAccess(_ purpose: BookmarkPurpose) {
+        do {
+            folderAccesses[purpose] = try bookmarkStore?.beginAccess(purpose: purpose)
+        } catch {
+            folderAccesses[purpose] = nil
+        }
+    }
+
+    private func authorizedSourceURL(for volume: MountedVolume) -> URL? {
+        guard let bookmarkStore,
+              let resolved = try? bookmarkStore.resolveBookmark(purpose: .source),
+              !resolved.isStale,
+              Self.isSameOrDescendant(resolved.url, of: volume.mountURL)
+        else {
+            return nil
+        }
+        refreshFolderAccess(.source)
+        guard let access = folderAccesses[.source], access.isActive else {
+            return nil
+        }
+        return access.url
+    }
+
+    nonisolated private static func isSameOrDescendant(_ candidate: URL, of root: URL) -> Bool {
+        let candidatePath = candidate.standardizedFileURL.resolvingSymlinksInPath().path
+        let rootPath = root.standardizedFileURL.resolvingSymlinksInPath().path
+        return candidatePath == rootPath || candidatePath.hasPrefix(rootPath + "/")
     }
 
     private func startMountObserver() {
@@ -3747,6 +4112,11 @@ final class AppModel: ObservableObject {
             return "Not enough space in \(path). Need \(required), available \(available)."
         }
 
+        if let localizedError = error as? LocalizedError,
+           let description = localizedError.errorDescription {
+            return description
+        }
+
         return String(describing: error)
     }
 }
@@ -3770,6 +4140,21 @@ private enum ImportPlanMode: Sendable {
             return builder.updates(files: files)
         case .existing:
             return []
+        }
+    }
+}
+
+private struct FolderAccessAuthorizationError: LocalizedError {
+    let purpose: BookmarkPurpose
+
+    var errorDescription: String? {
+        switch purpose {
+        case .source:
+            "Select the source folder in the macOS access panel."
+        case .photos:
+            "Select the photo destination in the macOS access panel."
+        case .videos:
+            "Select the video destination in the macOS access panel."
         }
     }
 }

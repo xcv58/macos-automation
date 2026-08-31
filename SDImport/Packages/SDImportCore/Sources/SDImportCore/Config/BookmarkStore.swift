@@ -1,10 +1,30 @@
 import Foundation
 import GRDB
 
-public enum BookmarkPurpose: String, Codable, CaseIterable, Sendable {
+public enum BookmarkPurpose: String, Codable, CaseIterable, Hashable, Sendable {
     case source
     case photos
     case videos
+}
+
+public final class SecurityScopedResourceAccess: @unchecked Sendable {
+    public let url: URL
+    private let didStartAccess: Bool
+
+    public var isActive: Bool {
+        didStartAccess
+    }
+
+    public init(url: URL) {
+        self.url = url
+        didStartAccess = url.startAccessingSecurityScopedResource()
+    }
+
+    deinit {
+        if didStartAccess {
+            url.stopAccessingSecurityScopedResource()
+        }
+    }
 }
 
 public struct ResolvedBookmark: Hashable, Sendable {
@@ -78,6 +98,17 @@ public struct BookmarkStore {
             )
             return ResolvedBookmark(purpose: purpose, url: url, isStale: isStale)
         }
+    }
+
+    public func beginAccess(purpose: BookmarkPurpose) throws -> SecurityScopedResourceAccess? {
+        guard let resolved = try resolveBookmark(purpose: purpose) else {
+            return nil
+        }
+        let access = SecurityScopedResourceAccess(url: resolved.url)
+        if resolved.isStale {
+            try saveBookmark(purpose: purpose, url: resolved.url)
+        }
+        return access
     }
 
     public func resolvedPath(purpose: BookmarkPurpose, fallback: String) -> String {

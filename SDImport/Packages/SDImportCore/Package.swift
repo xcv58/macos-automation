@@ -12,6 +12,10 @@ let package = Package(
             name: "SDImportCore",
             targets: ["SDImportCore"]
         ),
+        .library(
+            name: "SDImportCommerce",
+            targets: ["SDImportCommerce"]
+        ),
         .executable(
             name: "sdimport",
             targets: ["sdimport"]
@@ -40,12 +44,18 @@ let package = Package(
             name: "sdimport",
             dependencies: ["SDImportCore"]
         ),
+        .target(
+            name: "SDImportCommerce",
+            dependencies: ["SDImportCore"]
+        ),
         .executableTarget(
             name: "SDImportApp",
             dependencies: [
                 "SDImportCore",
+                "SDImportCommerce",
                 .product(name: "Sparkle", package: "Sparkle")
-            ]
+            ],
+            swiftSettings: [.define("SDIMPORT_DIRECT")]
         ),
         .executableTarget(
             name: "SDImportAgent",

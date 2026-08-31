@@ -1,3 +1,4 @@
+import SDImportCore
 import SwiftUI
 
 struct DiagnosticsView: View {
@@ -8,7 +9,9 @@ struct DiagnosticsView: View {
             VStack(alignment: .leading, spacing: 16) {
                 backgroundPromptSection
                 diagnosticsExportSection
-                crashReportsSection
+                if AppDistribution.current.canBrowseSystemCrashReports {
+                    crashReportsSection
+                }
 
                 if let statusText {
                     AppStatusLabel(

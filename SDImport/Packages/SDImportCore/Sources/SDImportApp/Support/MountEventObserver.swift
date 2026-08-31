@@ -55,25 +55,27 @@ final class MountEventObserver {
             }
         }
 
-        distributedToken = DistributedNotificationCenter.default().addObserver(
-            forName: Notification.Name(MountHandoff.notificationName),
-            object: targetApplicationPath,
-            queue: .main
-        ) { [weak self] notification in
-            guard let path = notification.userInfo?[MountHandoff.pathKey] as? String else {
-                return
-            }
-            guard
-                let targetPath = notification.userInfo?[MountHandoff.targetApplicationPathKey] as? String,
-                URL(fileURLWithPath: targetPath).standardizedFileURL.path == self?.targetApplicationPath
-            else {
-                return
-            }
-            let name = notification.userInfo?[MountHandoff.nameKey] as? String
-            let eventID = (notification.userInfo?[MountHandoff.eventIDKey] as? String)
-                .flatMap(UUID.init(uuidString:))
-            Task { @MainActor in
-                self?.handleNotification(path: path, name: name, eventID: eventID)
+        if AppDistribution.current == .direct {
+            distributedToken = DistributedNotificationCenter.default().addObserver(
+                forName: Notification.Name(MountHandoff.notificationName),
+                object: targetApplicationPath,
+                queue: .main
+            ) { [weak self] notification in
+                guard let path = notification.userInfo?[MountHandoff.pathKey] as? String else {
+                    return
+                }
+                guard
+                    let targetPath = notification.userInfo?[MountHandoff.targetApplicationPathKey] as? String,
+                    URL(fileURLWithPath: targetPath).standardizedFileURL.path == self?.targetApplicationPath
+                else {
+                    return
+                }
+                let name = notification.userInfo?[MountHandoff.nameKey] as? String
+                let eventID = (notification.userInfo?[MountHandoff.eventIDKey] as? String)
+                    .flatMap(UUID.init(uuidString:))
+                Task { @MainActor in
+                    self?.handleNotification(path: path, name: name, eventID: eventID)
+                }
             }
         }
 
@@ -95,7 +97,10 @@ final class MountEventObserver {
         guard shouldHandleDirectMount() else {
             return
         }
-        let volume = detector.mountedVolume(from: mountURL)
+        let volume = detector.mountedVolume(
+            from: mountURL,
+            includeCapacity: !AppDistribution.current.requiresConsentBeforeMediaProbe
+        )
         guard detector.isLikelyImportVolume(volume) else {
             return
         }
@@ -186,7 +191,10 @@ final class MountEventObserver {
         event: MountHandoffEvent? = nil
     ) {
         let mountURL = URL(fileURLWithPath: path, isDirectory: true)
-        let detectedVolume = detector.mountedVolume(from: mountURL)
+        let detectedVolume = detector.mountedVolume(
+            from: mountURL,
+            includeCapacity: !AppDistribution.current.requiresConsentBeforeMediaProbe
+        )
         if !MountHandoffVolumeIdentity.matchesCurrentVolume(
             expectedUUID: event?.mountedVolume?.volumeUUID,
             currentUUID: detectedVolume.volumeUUID
@@ -214,6 +222,17 @@ final class MountEventObserver {
         }
         guard detector.isLikelyImportVolume(volume) else {
             finish(claim)
+            return
+        }
+        if AppDistribution.current.requiresConsentBeforeMediaProbe {
+            switch handleImportableVolume(volume, event: event) {
+            case .accepted:
+                finish(claim)
+            case .deferred:
+                if let claim {
+                    handoffStore?.release(claim)
+                }
+            }
             return
         }
         probeForMediaThenHandle(volume, claim: claim, event: event)

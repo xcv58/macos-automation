@@ -3,7 +3,10 @@ import Foundation
 import OSLog
 import SDImportCore
 
-private let agentLogger = Logger(subsystem: "com.xcv58.SDImport", category: "BackgroundPrompt")
+private let agentLogger = Logger(
+    subsystem: Bundle.main.bundleIdentifier ?? "com.xcv58.SDImport.Agent",
+    category: "BackgroundPrompt"
+)
 
 @main
 @MainActor
@@ -22,7 +25,10 @@ struct SDImportAgent {
 
 @MainActor
 private final class AgentDelegate: NSObject, NSApplicationDelegate {
-    private static let mainBundleIdentifier = "com.xcv58.SDImport"
+    private static var mainBundleIdentifier: String {
+        Bundle.main.object(forInfoDictionaryKey: "SDImportMainBundleIdentifier") as? String
+            ?? "com.xcv58.SDImport"
+    }
 
     private let detector = VolumeDetector()
     private var token: NSObjectProtocol?
@@ -60,8 +66,15 @@ private final class AgentDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func handleMountURL(_ mountURL: URL) {
-        let volume = detector.mountedVolume(from: mountURL)
+        let volume = detector.mountedVolume(
+            from: mountURL,
+            includeCapacity: !AppDistribution.current.requiresConsentBeforeMediaProbe
+        )
         guard detector.isLikelyImportVolume(volume) else {
+            return
+        }
+        if AppDistribution.current.requiresConsentBeforeMediaProbe {
+            handleImportableVolume(volume)
             return
         }
         Task.detached(priority: .utility) { [weak self] in
@@ -128,7 +141,9 @@ private final class AgentDelegate: NSObject, NSApplicationDelegate {
         }
 
         activateOrLaunchMainApp(at: appURL, eventSequence: eventSequence)
-        post(volume, eventID: event?.id, targetApplicationPath: appURL.path)
+        if AppDistribution.current == .direct {
+            post(volume, eventID: event?.id, targetApplicationPath: appURL.path)
+        }
     }
 
     private func activateOrLaunchMainApp(at appURL: URL, eventSequence: UInt64) {

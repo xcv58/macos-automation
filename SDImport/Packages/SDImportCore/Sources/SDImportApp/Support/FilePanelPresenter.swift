@@ -3,9 +3,20 @@ import Foundation
 
 enum FilePanelPresenter {
     @MainActor
-    static func chooseDirectory(title: String, initialPath: String? = nil) -> String? {
+    static func chooseDirectoryURL(
+        title: String,
+        initialPath: String? = nil,
+        prompt: String? = nil,
+        message: String? = nil
+    ) -> URL? {
         let panel = NSOpenPanel()
         panel.title = title
+        if let prompt {
+            panel.prompt = prompt
+        }
+        if let message {
+            panel.message = message
+        }
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
@@ -13,7 +24,7 @@ enum FilePanelPresenter {
         if let initialPath, !initialPath.isEmpty {
             panel.directoryURL = URL(fileURLWithPath: (initialPath as NSString).expandingTildeInPath)
         }
-        return panel.runModal() == .OK ? panel.url?.path : nil
+        return panel.runModal() == .OK ? panel.url : nil
     }
 
     @MainActor

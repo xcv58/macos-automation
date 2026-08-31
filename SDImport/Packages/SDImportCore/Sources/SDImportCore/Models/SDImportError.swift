@@ -2,6 +2,7 @@ import Foundation
 
 public enum SDImportError: Error, Equatable, Sendable {
     case missingApplicationSupportDirectory
+    case missingApplicationGroupContainer(String)
     case invalidLegacyState(URL)
     case invalidDatabaseValue(column: String, value: String)
     case unsupportedMediaExtension(String)

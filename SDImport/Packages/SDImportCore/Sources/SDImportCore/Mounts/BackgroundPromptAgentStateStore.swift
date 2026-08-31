@@ -87,7 +87,7 @@ public struct BackgroundPromptAgentStateStore {
     }
 
     public static func defaultStore(fileManager: FileManager = .default) throws -> Self {
-        let supportURL = try DatabasePoolFactory.defaultApplicationSupportDirectory(fileManager: fileManager)
+        let supportURL = try AppGroupContainer.sharedSupportDirectory(fileManager: fileManager)
         return Self(
             fileURL: supportURL
                 .appendingPathComponent("Background Prompt", isDirectory: true)
