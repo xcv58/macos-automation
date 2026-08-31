@@ -20,6 +20,20 @@ public enum BackgroundPromptRuntimeQA {
         distribution == .macAppStore && arguments.contains(prepareApplicationArgument)
     }
 
+    public static func preparedApplicationConfiguration(
+        _ configuration: AppConfiguration,
+        arguments: [String] = ProcessInfo.processInfo.arguments,
+        distribution: AppDistribution = .current
+    ) -> AppConfiguration? {
+        guard preparesApplication(arguments: arguments, distribution: distribution) else {
+            return nil
+        }
+        var preparedConfiguration = configuration
+        preparedConfiguration.autoPromptEnabled = true
+        preparedConfiguration.hasCompletedOnboarding = true
+        return preparedConfiguration
+    }
+
     public static func unregistersHelper(
         arguments: [String] = ProcessInfo.processInfo.arguments,
         distribution: AppDistribution = .current

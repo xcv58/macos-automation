@@ -411,8 +411,17 @@ final class AppModel: ObservableObject {
             }
             try loadStoredConfiguration()
 #if DEBUG
-            if BackgroundPromptRuntimeQA.preparesApplication()
-                || BackgroundPromptRuntimeQA.consumesInjectedHandoff()
+            if let preparedConfiguration = BackgroundPromptRuntimeQA
+                .preparedApplicationConfiguration(currentConfiguration())
+            {
+                autoPromptEnabled = preparedConfiguration.autoPromptEnabled
+                hasCompletedOnboarding = preparedConfiguration.hasCompletedOnboarding
+                guard savePreferences(persistAutoPromptPreference: true) else {
+                    throw SDImportError.invalidArgument(
+                        "Could not persist the background helper QA preparation state"
+                    )
+                }
+            } else if BackgroundPromptRuntimeQA.consumesInjectedHandoff()
                 || BackgroundPromptRuntimeQA.helperLifecycleIsActive()
             {
                 autoPromptEnabled = true

@@ -90,6 +90,45 @@ struct BackgroundPromptRuntimeQATests {
         )
     }
 
+    @Test("preparation enables and persists the physical-card prompt prerequisites")
+    func preparesPersistentApplicationConfiguration() throws {
+        let pool = try migratedPool()
+        let repository = SettingsRepository(pool: pool)
+        let configuration = AppConfiguration.defaultConfiguration(
+            homeDirectory: URL(fileURLWithPath: "/Users/example", isDirectory: true)
+        )
+
+        let prepared = try #require(
+            BackgroundPromptRuntimeQA.preparedApplicationConfiguration(
+                configuration,
+                arguments: ["app", BackgroundPromptRuntimeQA.prepareApplicationArgument],
+                distribution: .macAppStore
+            )
+        )
+        #expect(prepared.autoPromptEnabled)
+        #expect(prepared.hasCompletedOnboarding)
+
+        try repository.saveConfiguration(prepared)
+        let persisted = try #require(try repository.fetchConfiguration())
+        #expect(persisted.autoPromptEnabled)
+        #expect(persisted.hasCompletedOnboarding)
+
+        #expect(
+            BackgroundPromptRuntimeQA.preparedApplicationConfiguration(
+                configuration,
+                arguments: ["app", BackgroundPromptRuntimeQA.prepareApplicationArgument],
+                distribution: .direct
+            ) == nil
+        )
+        #expect(
+            BackgroundPromptRuntimeQA.preparedApplicationConfiguration(
+                configuration,
+                arguments: ["app", BackgroundPromptRuntimeQA.consumeHandoffArgument],
+                distribution: .macAppStore
+            ) == nil
+        )
+    }
+
     @Test("shares an exact, short-lived helper lifecycle marker")
     func sharesHelperLifecycleMarker() throws {
         let root = FileManager.default.temporaryDirectory
