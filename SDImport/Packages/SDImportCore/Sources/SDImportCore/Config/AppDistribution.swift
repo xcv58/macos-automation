@@ -71,4 +71,13 @@ public enum AppDistribution: String, Codable, Sendable {
     public var supportsSourceEjection: Bool {
         self == .direct
     }
+
+    public var staleBookmarkHandling: StaleBookmarkHandling {
+        switch self {
+        case .direct:
+            .refresh
+        case .macAppStore:
+            .requireNewSelection
+        }
+    }
 }

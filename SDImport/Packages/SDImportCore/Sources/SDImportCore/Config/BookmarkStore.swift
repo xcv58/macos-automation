@@ -7,6 +7,16 @@ public enum BookmarkPurpose: String, Codable, CaseIterable, Hashable, Sendable {
     case videos
 }
 
+public enum StaleBookmarkHandling: Equatable, Sendable {
+    case refresh
+    case requireNewSelection
+}
+
+enum BookmarkAccessDecision: Equatable, Sendable {
+    case beginAccess(refreshBookmark: Bool)
+    case requireNewSelection
+}
+
 public final class SecurityScopedResourceAccess: @unchecked Sendable {
     public let url: URL
     private let didStartAccess: Bool
@@ -114,15 +124,43 @@ public struct BookmarkStore {
         }
     }
 
-    public func beginAccess(purpose: BookmarkPurpose) throws -> SecurityScopedResourceAccess? {
+    public func beginAccess(
+        purpose: BookmarkPurpose,
+        staleBookmarkHandling: StaleBookmarkHandling = .refresh
+    ) throws -> SecurityScopedResourceAccess? {
         guard let resolved = try resolveBookmark(purpose: purpose) else {
             return nil
         }
-        let access = SecurityScopedResourceAccess(url: resolved.url)
-        if resolved.isStale {
-            try saveBookmark(purpose: purpose, url: resolved.url)
+
+        switch Self.accessDecision(
+            isStale: resolved.isStale,
+            staleBookmarkHandling: staleBookmarkHandling
+        ) {
+        case .requireNewSelection:
+            return nil
+        case .beginAccess(let refreshBookmark):
+            let access = SecurityScopedResourceAccess(url: resolved.url)
+            if refreshBookmark {
+                try saveBookmark(purpose: purpose, url: resolved.url)
+            }
+            return access
         }
-        return access
+    }
+
+    static func accessDecision(
+        isStale: Bool,
+        staleBookmarkHandling: StaleBookmarkHandling
+    ) -> BookmarkAccessDecision {
+        guard isStale else {
+            return .beginAccess(refreshBookmark: false)
+        }
+
+        switch staleBookmarkHandling {
+        case .refresh:
+            return .beginAccess(refreshBookmark: true)
+        case .requireNewSelection:
+            return .requireNewSelection
+        }
     }
 
     public func resolvedPath(purpose: BookmarkPurpose, fallback: String) -> String {

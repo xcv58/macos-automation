@@ -45,6 +45,26 @@ xcodegen -s project.yml
 The post-generation hook adds the StoreKit configuration to the scheme's test
 action. Do not edit the generated project by hand.
 
+## Compatibility Audit
+
+The App Store edition uses the same core and UI with the distribution policy as
+the capability boundary. The current audit is:
+
+| Area | App Store behavior | Evidence or remaining gate |
+| --- | --- | --- |
+| Detection | `NSWorkspace.didMountNotification` and volume metadata identify a removable mount. The MAS policy omits capacity and media probing before consent. | Policy, helper, foreground observer, and mailbox tests pass; physical insertion remains a hardware gate. |
+| Helper | `SMAppService` runs the embedded sandboxed login item and an App Group mailbox carries occurrence-identified mount events. | Structural and deterministic tests pass; signed runtime needs the two exact development profiles. |
+| Bookmarks | Source and destination access comes only from user-selected read/write security scopes. Fresh bookmarks restore across relaunch; stale bookmarks are rejected until a new selection. | Synthetic signed import/relaunch passed; revoked and stale repair UI remains a clean-account gate. |
+| `/Volumes` assumptions | `/Volumes` is only a mount-root discovery/default placeholder and direct-edition ejection boundary. It is not treated as App Store content authorization. | Source enumeration is downstream of `ensureSourceAccessForScan`; the MAS archive has no filesystem exception entitlement. |
+| Ejection | Not offered and guarded out of model operations in the MAS edition. | Edition policy and focused tests pass; direct behavior remains intact. |
+| Diagnostics | App-owned redacted diagnostics remain available. Browsing system crash-report directories is not offered in the MAS edition. | Edition policy and diagnostics redaction tests pass. |
+| Quick Look | Thumbnails and previews use URLs below the already authorized source while `AppModel` retains the matching security-scope object. | No additional entitlement or subprocess is used; confirm previewing from a physical card in final QA. |
+| Legacy importer | Unsandboxed legacy-state discovery runs only in the direct edition. | Central distribution policy and tests pass. |
+| Portable receipts | The optional ledger uses the source's user-selected read/write scope. Read-only or locking failures produce warnings and do not block normal local history/import behavior. | Ledger safety/concurrency tests pass; confirm a read-only physical card in final QA. |
+| Subprocesses | The shipped Swift app/helper launch no command-line subprocesses. Process use is confined to repository tooling. | Source audit passes. |
+| Privileged operations | The MAS app/helper contain no privilege escalation or temporary exception entitlement. Direct-only ejection uses `NSWorkspace`; it is unreachable in MAS. | Entitlement verifier and edition guards pass. |
+| Updates | Sparkle remains a direct-edition dependency and is absent from the MAS app target and archive. | Direct packaging and MAS archive verifiers pass. |
+
 ## Local Verification
 
 Run the shared tests from `SDImport/Packages/SDImportCore`:
@@ -75,7 +95,9 @@ and manual QA matrix are separate release gates.
 The core suite also locks down the edition boundary: exact identifiers, the
 pre-consent mount privacy policy, App Group mailbox location and fail-closed
 behavior, balanced security-scope start/stop lifetime, and direct-edition
-capabilities.
+capabilities. It also proves that the App Store edition rejects stale bookmarks
+until the user selects the folder again, while the direct edition preserves its
+existing stale-bookmark refresh behavior.
 
 Build and audit a local App Store-shaped bundle from the repository root:
 
@@ -171,12 +193,12 @@ Snapshot from 2026-08-31:
 | Goal gate | Current evidence | Remaining evidence |
 | --- | --- | --- |
 | Sandboxed manual import | A standalone, development-provisioned MAS Debug app passed the runtime gate with App Sandbox, user-selected read/write, and the App Group entitlement, with no temporary exceptions. Real `NSOpenPanel` authorization, a one-JPEG scan, destination authorization, completed import, and copied-output verification passed. The App Store-shaped Release bundle and trusted Apple Distribution archive also pass their structural and strict signature verifiers. | Repeat with a physical removable card before submission. |
-| Bookmark persistence and revocation | The runtime gate relaunched the independently signed app, restored the selected synthetic source through its security-scoped bookmark without another folder panel, and completed a second scan. Core tests prove exact group-path selection, fail-closed missing-group behavior, and one-for-one security-scope lifetime. | Physical reinsertion, stale-bookmark refresh, and revoked-permission recovery in a clean provisioned QA account. |
+| Bookmark persistence and revocation | The runtime gate relaunched the independently signed app, restored the selected synthetic source through its security-scoped bookmark without another folder panel, and completed a second scan. Core tests prove exact group-path selection, fail-closed missing-group behavior, one-for-one security-scope lifetime, and that the App Store edition refuses stale bookmarks until a new user selection while the direct edition retains refresh behavior. | Physical reinsertion plus stale-bookmark and revoked-permission repair UI in a clean provisioned QA account. |
 | No scan before consent | The shared mount policy test proves the App Store edition reads no capacity, performs no media probe, and sends no distributed-notification handoff before consent. Both helper and observer use that policy. A reproducible signed helper-consent gate now asserts the no-scan copy and absence of folder/review UI before and after declining. | Install exact App Group-enabled development profiles and pass the helper gate; then repeat with physical insertion. |
 | Sandboxed helper mailbox | Existing mailbox/causality tests plus App Group path tests pass. Both App IDs are assigned to the registered App Group. The real signed login item registered and launched, but the current wildcard Debug profile did not authorize App Group file creation; the new gate rejects that profile before installation. | Create/install exact Apple Development profiles for the app and helper, then pass helper registration, mailbox delivery, app wake, and consent/decline. Physical mount delivery remains separate. |
 | StoreKit | Six app-hosted local StoreKit tests pass with no skips; purchase/refund and restore each passed 10 repeated focused runs. Core policy covers free allowance and cancellation. Restore checks current entitlements first and falls back only to Apple's verified, non-revoked latest transaction for the exact product after an explicit sync; verification failure remains fail-closed. | Sandbox/TestFlight purchase and restore after the IAP exists in App Store Connect. |
-| Both editions | 229 tests in 35 suites pass; direct and App Store Release builds succeed; direct Sparkle packaging and identifiers remain intact. | None locally. |
-| Archive inspection | The post-StoreKit-fix Apple Distribution archive passes the strict verifier: exact app/helper identifiers and profiles, team and App Group, universal binaries, sandbox entitlements, privacy manifests, lifetime product ID, helper placement, test-artifact exclusion, and no Sparkle. | None locally. Repeat against the final version/build numbers before upload. |
+| Both editions | 230 tests in 35 suites pass; direct and App Store Release builds succeed; direct Sparkle packaging and identifiers remain intact. | None locally. |
+| Archive inspection | A fresh exact-head Apple Distribution archive after the stale-bookmark policy change passes the strict verifier: exact app/helper identifiers and profiles, team and App Group, universal binaries, sandbox entitlements, privacy manifests, lifetime product ID, helper placement, test-artifact exclusion, and no Sparkle. | None locally. Repeat against the final version/build numbers before upload. |
 
 The standalone runtime gate is counted only for manual folder authorization,
 copying, and same-folder bookmark relaunch. It is not helper, removable-media,

@@ -38,6 +38,30 @@ struct AppStoreDistributionTests {
         #expect(AppDistribution.direct.canBrowseSystemCrashReports)
         #expect(!AppDistribution.macAppStore.supportsSourceEjection)
         #expect(AppDistribution.direct.supportsSourceEjection)
+        #expect(AppDistribution.macAppStore.staleBookmarkHandling == .requireNewSelection)
+        #expect(AppDistribution.direct.staleBookmarkHandling == .refresh)
+    }
+
+    @Test("the App Store edition rejects stale bookmarks until the user selects again")
+    func staleBookmarkPolicy() {
+        #expect(
+            BookmarkStore.accessDecision(
+                isStale: false,
+                staleBookmarkHandling: .requireNewSelection
+            ) == .beginAccess(refreshBookmark: false)
+        )
+        #expect(
+            BookmarkStore.accessDecision(
+                isStale: true,
+                staleBookmarkHandling: AppDistribution.macAppStore.staleBookmarkHandling
+            ) == .requireNewSelection
+        )
+        #expect(
+            BookmarkStore.accessDecision(
+                isStale: true,
+                staleBookmarkHandling: AppDistribution.direct.staleBookmarkHandling
+            ) == .beginAccess(refreshBookmark: true)
+        )
     }
 
     @Test("security-scoped access stops exactly once only after a successful start")

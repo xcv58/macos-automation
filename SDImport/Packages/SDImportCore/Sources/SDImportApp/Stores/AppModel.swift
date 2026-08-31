@@ -3767,7 +3767,10 @@ final class AppModel: ObservableObject {
 
     private func refreshFolderAccess(_ purpose: BookmarkPurpose) {
         do {
-            folderAccesses[purpose] = try bookmarkStore?.beginAccess(purpose: purpose)
+            folderAccesses[purpose] = try bookmarkStore?.beginAccess(
+                purpose: purpose,
+                staleBookmarkHandling: AppDistribution.current.staleBookmarkHandling
+            )
         } catch {
             folderAccesses[purpose] = nil
         }
