@@ -1957,6 +1957,10 @@ final class AppModel: ObservableObject {
         pendingMountedVolume = nil
         selection = .import
         cardPath = sourceURL.path
+        // The helper can deliver a mount before /Volumes enumeration catches up.
+        // Refresh after authorization so source ejection is available on the
+        // first source and review screens without requiring a manual refresh.
+        refreshAvailableSourceVolumes()
         sourcePathDidChange()
         savePreferences()
         scan()
