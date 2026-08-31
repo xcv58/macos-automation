@@ -31,6 +31,15 @@ results:
 The capture report omits filenames and full paths. Review it before sharing or
 committing any excerpt.
 
+## Mac App Store Runtime Passes
+
+| Scenario | Expected Result | Status |
+| --- | --- | --- |
+| Development-provisioned sandbox import | With no temporary exceptions, authorize a synthetic card and destination through real macOS folder panels, scan one JPEG, complete the import, and verify the copied output | Passed 2026-08-31 with `media.jenny.sdimport`: App Sandbox, user-selected read/write, and App Group entitlements were present; source scan, destination selection, import completion, and output verification passed |
+| Source bookmark relaunch | Relaunch the same sandboxed app without another folder panel, restore the synthetic source bookmark, and scan again | Passed 2026-08-31; the persisted source path returned, Scan Card was enabled, no open panel appeared, and the second scan reached review |
+| Physical App Store card and helper | Quit the main app, insert a removable card, verify the helper wakes it without enumeration, decline consent with no scan, then accept consent and reuse or refresh folder authorization | Required before App Store submission; the synthetic manual-import pass does not exercise removable-media insertion or the login item |
+| Bookmark revocation and stale refresh | Revoke folder permission or exercise a stale bookmark, relaunch, and confirm a controlled repair panel with no preauthorization scan | Required before App Store submission |
+
 ## Required Hardware Passes
 
 | Scenario | Card Contents | Expected Result | Status |

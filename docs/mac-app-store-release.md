@@ -108,26 +108,53 @@ the exact lifetime product identifier in the compiled app, and no StoreKit test
 artifacts. This is the release gate; the ad-hoc staged bundle is only a local
 structure and behavior audit.
 
+Run the development-provisioned sandbox runtime gate from a clean macOS QA
+account:
+
+```bash
+CONFIRM_CLEAN_MAS_QA_ACCOUNT=1 \
+DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer \
+./script/run_mas_runtime_qa.sh
+```
+
+The wrapper builds a fresh Debug MAS app, verifies its signature and production
+App Sandbox, user-selected-folder, and App Group entitlements, and rejects any
+XCTest temporary exception. A standalone Accessibility driver then uses real
+macOS folder panels to authorize a synthetic card and destination, scans and
+imports one JPEG, verifies the copied output, relaunches the same app, and scans
+again through the persisted source bookmark without reopening the folder panel.
+The fixture, app, driver, and DerivedData are removed after the run.
+
+This gate requires Accessibility permission for the terminal or automation host.
+It deliberately uses `media.jenny.sdimport`, so it can update that account's MAS
+sandbox preferences, bookmarks, history, and dedupe state. The confirmation
+variable is an intentional guard: do not run it in an account containing real
+MAS user data. It does not simulate removable-media insertion, login-item wake,
+bookmark revocation, StoreKit sandbox, or TestFlight.
+
 Never use `ALLOW_UNTRUSTED_DEVELOPMENT_SIGNATURE=1` as release evidence. It is
 only a diagnostic option for inspecting other bundle properties while a local
 development certificate trust problem is being repaired.
 
 ## Current Validation Status
 
-Snapshot from 2026-08-30:
+Snapshot from 2026-08-31:
 
 | Goal gate | Current evidence | Remaining evidence |
 | --- | --- | --- |
-| Sandboxed manual import | App Store-shaped Release bundle builds and passes the structural verifier. A trusted Apple Distribution archive now passes the strict provisioned-signature verifier. | Run a user-selected synthetic card import in the provisioned sandbox. |
-| Bookmark persistence and revocation | Core tests prove exact group-path selection, fail-closed missing-group behavior, and one-for-one security-scope lifetime. | Relaunch, reinsertion, stale bookmark, and revoked-permission checks in a genuinely provisioned sandbox. |
+| Sandboxed manual import | A standalone, development-provisioned MAS Debug app passed the runtime gate with App Sandbox, user-selected read/write, and the App Group entitlement, with no temporary exceptions. Real `NSOpenPanel` authorization, a one-JPEG scan, destination authorization, completed import, and copied-output verification passed. The App Store-shaped Release bundle and trusted Apple Distribution archive also pass their structural and strict signature verifiers. | Repeat with a physical removable card before submission. |
+| Bookmark persistence and revocation | The runtime gate relaunched the independently signed app, restored the selected synthetic source through its security-scoped bookmark without another folder panel, and completed a second scan. Core tests prove exact group-path selection, fail-closed missing-group behavior, and one-for-one security-scope lifetime. | Physical reinsertion, stale-bookmark refresh, and revoked-permission recovery in a clean provisioned QA account. |
 | No scan before consent | The shared mount policy test proves the App Store edition reads no capacity, performs no media probe, and sends no distributed-notification handoff before consent. Both helper and observer use that policy. | Observe the helper/app flow with a synthetic card under the provisioned sandbox. |
 | Sandboxed helper mailbox | Existing mailbox/causality tests plus App Group path tests pass. Both App IDs are assigned to the registered App Group. | End-to-end login-item wake and mailbox delivery from a trusted provisioned build. |
 | StoreKit | Six app-hosted local StoreKit tests pass with no skips; purchase/refund and restore each passed 10 repeated focused runs. Core policy covers free allowance and cancellation. Restore checks current entitlements first and falls back only to Apple's verified, non-revoked latest transaction for the exact product after an explicit sync; verification failure remains fail-closed. | Sandbox/TestFlight purchase and restore after the IAP exists in App Store Connect. |
 | Both editions | 226 tests in 34 suites pass; direct and App Store Release builds succeed; direct Sparkle packaging and identifiers remain intact. | None locally. |
 | Archive inspection | The post-StoreKit-fix Apple Distribution archive passes the strict verifier: exact app/helper identifiers and profiles, team and App Group, universal binaries, sandbox entitlements, privacy manifests, lifetime product ID, helper placement, test-artifact exclusion, and no Sparkle. | None locally. Repeat against the final version/build numbers before upload. |
 
-App-hosted StoreKit simulation is deliberately not counted as sandboxed file or
-helper evidence. Those flows still require the manual provisioned-build matrix.
+The standalone runtime gate is counted only for manual folder authorization,
+copying, and same-folder bookmark relaunch. It is not helper, removable-media,
+revocation, or StoreKit evidence. App-hosted StoreKit simulation is likewise not
+counted as sandboxed file or helper evidence. Those flows still require the
+manual provisioned-build matrix.
 
 An earlier outside-sandbox archive on 2026-08-30, before Release-only manual
 signing and the matching private key were installed, completed with exit status
