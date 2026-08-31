@@ -413,6 +413,7 @@ final class AppModel: ObservableObject {
 #if DEBUG
             if BackgroundPromptRuntimeQA.preparesApplication()
                 || BackgroundPromptRuntimeQA.consumesInjectedHandoff()
+                || BackgroundPromptRuntimeQA.helperLifecycleIsActive()
             {
                 autoPromptEnabled = true
                 hasCompletedOnboarding = true
@@ -2228,6 +2229,13 @@ final class AppModel: ObservableObject {
     }
 
     private func reconcileBackgroundPromptRegistration(showFeedback: Bool = false) {
+#if DEBUG
+        guard BackgroundPromptRuntimeQA.permitsRegistrationReconciliation(
+            helperLifecycleIsActive: BackgroundPromptRuntimeQA.helperLifecycleIsActive()
+        ) else {
+            return
+        }
+#endif
         enqueueBackgroundPromptOperation { model in
             await model.performBackgroundPromptReconciliation(showFeedback: showFeedback)
         }

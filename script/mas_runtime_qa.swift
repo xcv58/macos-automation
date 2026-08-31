@@ -149,6 +149,15 @@ private final class AXDriver {
         return false
     }
 
+    func hasAccessibleText(_ expected: String, element: AXUIElement) -> Bool {
+        let attributes = [
+            kAXTitleAttribute as CFString,
+            kAXDescriptionAttribute as CFString,
+            kAXValueAttribute as CFString,
+        ]
+        return attributes.contains { Self.stringAttribute(element, $0) == expected }
+    }
+
     func waitUntilEnabled(
         _ query: AXQuery,
         timeout: TimeInterval,
@@ -520,21 +529,44 @@ private struct MacAppStoreRuntimeQA {
                     + "Accessible UI:\n" + driver.diagnosticSnapshot()
             )
             let declineButton = try driver.element(
-                AXQuery(role: kAXButtonRole as String, title: "Don't Scan"),
+                AXQuery(
+                    role: kAXButtonRole as String,
+                    identifier: "import.mount-prompt.decline"
+                ),
                 timeout: 3,
-                failure: "The helper consent sheet did not offer Don't Scan"
+                failure: "The helper consent sheet did not expose its decline action. "
+                    + "Accessible UI:\n" + driver.diagnosticSnapshot()
             )
-            _ = try driver.element(
-                AXQuery(role: kAXButtonRole as String, title: "Allow Scan"),
+            guard driver.hasAccessibleText("Don't Scan", element: declineButton) else {
+                throw RuntimeQAError.failed(
+                    "The helper consent sheet decline action was not labeled Don't Scan. "
+                        + "Accessible UI:\n" + driver.diagnosticSnapshot()
+                )
+            }
+            let allowButton = try driver.element(
+                AXQuery(
+                    role: kAXButtonRole as String,
+                    identifier: "import.mount-prompt.allow"
+                ),
                 timeout: 3,
-                failure: "The helper consent sheet did not offer Allow Scan"
+                failure: "The helper consent sheet did not expose its allow action. "
+                    + "Accessible UI:\n" + driver.diagnosticSnapshot()
             )
+            guard driver.hasAccessibleText("Allow Scan", element: allowButton) else {
+                throw RuntimeQAError.failed(
+                    "The helper consent sheet allow action was not labeled Allow Scan. "
+                        + "Accessible UI:\n" + driver.diagnosticSnapshot()
+                )
+            }
             try assertNoScanUI(driver, context: "before consent")
 
             print("QA: declining consent and confirming that no scan or access panel starts")
             try driver.press(declineButton)
             try driver.waitForNoElement(
-                AXQuery(role: kAXButtonRole as String, title: "Allow Scan"),
+                AXQuery(
+                    role: kAXButtonRole as String,
+                    identifier: "import.mount-prompt.allow"
+                ),
                 timeout: 5,
                 failure: "The consent sheet did not dismiss after Don't Scan"
             )
@@ -553,7 +585,9 @@ private struct MacAppStoreRuntimeQA {
                 try? await unregisterHelper(appURL: appURL, helperURL: helperURL)
             }
             terminateRunningCopies(of: appURL)
-            terminateRunningCopies(bundleIdentifier: helperBundleIdentifier, at: helperURL)
+            if !registrationAlreadyApproved {
+                terminateRunningCopies(bundleIdentifier: helperBundleIdentifier, at: helperURL)
+            }
             throw error
         }
     }
@@ -754,12 +788,19 @@ private struct MacAppStoreRuntimeQA {
 
     private static func waitForTermination(_ running: NSRunningApplication) async throws {
         let deadline = Date().addingTimeInterval(10)
-        while !running.isTerminated, Date() < deadline {
+        while Date() < deadline {
+            let refreshedApplication = NSRunningApplication(
+                processIdentifier: running.processIdentifier
+            )
+            if running.isTerminated
+                || refreshedApplication == nil
+                || refreshedApplication?.isTerminated == true
+            {
+                return
+            }
             try await Task.sleep(for: .milliseconds(100))
         }
-        guard running.isTerminated else {
-            throw RuntimeQAError.failed("The temporary app did not terminate for the relaunch check")
-        }
+        throw RuntimeQAError.failed("The temporary app did not terminate for the relaunch check")
     }
 
     private static func makeFixture() throws -> SyntheticFixture {

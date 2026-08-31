@@ -27,6 +27,44 @@ struct BackgroundPromptRuntimeQATests {
             )
         )
         #expect(
+            !BackgroundPromptRuntimeQA.permitsRegistrationReconciliation(
+                arguments: ["app", BackgroundPromptRuntimeQA.consumeHandoffArgument],
+                distribution: .macAppStore
+            )
+        )
+        #expect(
+            !BackgroundPromptRuntimeQA.permitsRegistrationReconciliation(
+                arguments: ["app", BackgroundPromptRuntimeQA.prepareApplicationArgument],
+                distribution: .macAppStore
+            )
+        )
+        #expect(
+            !BackgroundPromptRuntimeQA.permitsRegistrationReconciliation(
+                arguments: ["app", BackgroundPromptRuntimeQA.unregisterHelperArgument],
+                distribution: .macAppStore
+            )
+        )
+        #expect(
+            BackgroundPromptRuntimeQA.permitsRegistrationReconciliation(
+                arguments: ["app"],
+                distribution: .macAppStore
+            )
+        )
+        #expect(
+            !BackgroundPromptRuntimeQA.permitsRegistrationReconciliation(
+                arguments: ["app"],
+                distribution: .macAppStore,
+                helperLifecycleIsActive: true
+            )
+        )
+        #expect(
+            BackgroundPromptRuntimeQA.permitsRegistrationReconciliation(
+                arguments: ["app", BackgroundPromptRuntimeQA.consumeHandoffArgument],
+                distribution: .direct,
+                helperLifecycleIsActive: true
+            )
+        )
+        #expect(
             !BackgroundPromptRuntimeQA.preparesApplication(
                 arguments: ["agent"],
                 distribution: .macAppStore
@@ -48,6 +86,56 @@ struct BackgroundPromptRuntimeQATests {
             !BackgroundPromptRuntimeQA.preparesApplication(
                 arguments: ["agent", BackgroundPromptRuntimeQA.prepareApplicationArgument],
                 distribution: .direct
+            )
+        )
+    }
+
+    @Test("shares an exact, short-lived helper lifecycle marker")
+    func sharesHelperLifecycleMarker() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let markerURL = root.appendingPathComponent("runtime-qa-active.json")
+        let appURL = URL(fileURLWithPath: "/Applications/SD Import for Mac Helper QA.app")
+        let otherAppURL = URL(fileURLWithPath: "/Applications/Another Copy.app")
+        let markedAt = Date(timeIntervalSince1970: 1_800_000_000)
+
+        try BackgroundPromptRuntimeQA.markHelperLifecycleActive(
+            targetApplicationURL: appURL,
+            markerURL: markerURL,
+            now: markedAt
+        )
+
+        #expect(
+            BackgroundPromptRuntimeQA.helperLifecycleIsActive(
+                targetApplicationURL: appURL,
+                markerURL: markerURL,
+                now: markedAt.addingTimeInterval(60)
+            )
+        )
+        #expect(
+            !BackgroundPromptRuntimeQA.helperLifecycleIsActive(
+                targetApplicationURL: otherAppURL,
+                markerURL: markerURL,
+                now: markedAt.addingTimeInterval(60)
+            )
+        )
+        #expect(
+            !BackgroundPromptRuntimeQA.helperLifecycleIsActive(
+                targetApplicationURL: appURL,
+                markerURL: markerURL,
+                now: markedAt.addingTimeInterval(
+                    BackgroundPromptRuntimeQA.lifecycleMarkerMaximumAge + 1
+                )
+            )
+        )
+
+        try BackgroundPromptRuntimeQA.clearHelperLifecycleMarker(markerURL: markerURL)
+        #expect(
+            !BackgroundPromptRuntimeQA.helperLifecycleIsActive(
+                targetApplicationURL: appURL,
+                markerURL: markerURL,
+                now: markedAt.addingTimeInterval(60)
             )
         )
     }

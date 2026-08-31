@@ -42,6 +42,7 @@ struct SDImportApp: App {
         if BackgroundPromptRuntimeQA.unregistersHelper() {
             Task { @MainActor in
                 try? await LoginItemController.setEnabled(false)
+                try? BackgroundPromptRuntimeQA.clearHelperLifecycleMarker()
                 NSApp.terminate(nil)
             }
         }

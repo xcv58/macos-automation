@@ -33,10 +33,12 @@ struct MountPromptView: View {
                 Button(skipButtonTitle) {
                     skipAction()
                 }
+                .accessibilityIdentifier("import.mount-prompt.decline")
                 Button(scanButtonTitle) {
                     continueAction()
                 }
                 .keyboardShortcut(.defaultAction)
+                .accessibilityIdentifier("import.mount-prompt.allow")
             }
         }
         .padding(22)

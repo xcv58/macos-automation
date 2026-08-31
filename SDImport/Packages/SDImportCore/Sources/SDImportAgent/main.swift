@@ -69,8 +69,22 @@ private final class AgentDelegate: NSObject, NSApplicationDelegate {
             let mountURL = BackgroundPromptRuntimeQA.injectedMountURL(),
             let values = try? mountURL.resourceValues(forKeys: [.isDirectoryKey, .volumeURLKey]),
             values.isDirectory == true,
-            values.volume?.standardizedFileURL == mountURL.standardizedFileURL
+            values.volume?.standardizedFileURL == mountURL.standardizedFileURL,
+            let appURL = containingMainApplicationURL
         {
+            do {
+                try BackgroundPromptRuntimeQA.markHelperLifecycleActive(
+                    targetApplicationURL: appURL
+                )
+            } catch {
+                try? BackgroundPromptAgentStateStore.defaultStore().recordError(
+                    agentBuild: agentBuild,
+                    agentBundlePath: agentBundlePath,
+                    message: "Could not mark the helper runtime QA lifecycle as active"
+                )
+                agentLogger.error("Could not mark the helper runtime QA lifecycle as active")
+                return
+            }
             handleImportableVolume(
                 BackgroundPromptRuntimeQA.injectedPostDetectionVolume(at: mountURL)
             )
