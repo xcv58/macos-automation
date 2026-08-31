@@ -30,6 +30,20 @@ plist_value() {
   /usr/bin/plutil -extract "$2" raw -o - "$1" 2>/dev/null
 }
 
+decode_provisioning_profile() {
+  local profile="$1"
+  local output="$2"
+
+  if /usr/bin/security cms -D -i "$profile" >"$output" 2>/dev/null; then
+    return
+  fi
+  if /usr/bin/openssl cms -verify -inform DER -in "$profile" \
+    -noverify -out "$output" 2>/dev/null; then
+    return
+  fi
+  fail "could not decode provisioning profile $profile"
+}
+
 expect_plist_value() {
   local file="$1"
   local key="$2"
@@ -53,6 +67,17 @@ expect_universal_binary() {
   architectures="$(/usr/bin/lipo -archs "$binary")" || fail "could not read architectures from $binary"
   [[ " $architectures " == *" arm64 "* ]] || fail "$binary is missing arm64"
   [[ " $architectures " == *" x86_64 "* ]] || fail "$binary is missing x86_64"
+}
+
+expect_distribution_signature() {
+  local bundle="$1"
+  local details
+  details="$(/usr/bin/codesign -d --verbose=4 "$bundle" 2>&1)" \
+    || fail "could not inspect the code signature for $bundle"
+  [[ "$details" == *"Authority=Apple Distribution:"* ]] \
+    || fail "$bundle is not signed by an Apple Distribution identity"
+  [[ "$details" == *"TeamIdentifier=5736QK4NZX"* ]] \
+    || fail "$bundle is not signed for team 5736QK4NZX"
 }
 
 expect_file "$APP_INFO"
@@ -148,12 +173,14 @@ if [[ "${REQUIRE_PROVISIONED_SIGNATURE:-0}" == "1" ]]; then
   agent_profile="$AGENT_CONTENTS/embedded.provisionprofile"
   expect_file "$app_profile"
   expect_file "$agent_profile"
+  expect_distribution_signature "$APP_BUNDLE"
+  expect_distribution_signature "$AGENT_BUNDLE"
 
   app_profile_plist="$(mktemp /tmp/sdimport-app-profile.XXXXXX)"
   agent_profile_plist="$(mktemp /tmp/sdimport-agent-profile.XXXXXX)"
   trap '/bin/rm -f "$app_entitlements" "$agent_entitlements" "$app_profile_plist" "$agent_profile_plist"' EXIT
-  /usr/bin/security cms -D -i "$app_profile" >"$app_profile_plist"
-  /usr/bin/security cms -D -i "$agent_profile" >"$agent_profile_plist"
+  decode_provisioning_profile "$app_profile" "$app_profile_plist"
+  decode_provisioning_profile "$agent_profile" "$agent_profile_plist"
 
   expect_plist_value "$app_entitlements" 'com\.apple\.application-identifier' 5736QK4NZX.media.jenny.sdimport
   expect_plist_value "$app_entitlements" 'com\.apple\.developer\.team-identifier' 5736QK4NZX

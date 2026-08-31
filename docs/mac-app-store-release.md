@@ -114,13 +114,13 @@ Snapshot from 2026-08-30:
 
 | Goal gate | Current evidence | Remaining evidence |
 | --- | --- | --- |
-| Sandboxed manual import | App Store-shaped Release bundle builds and passes the structural verifier. | Exact Apple profiles, then a user-selected synthetic card import in the sandbox. |
+| Sandboxed manual import | App Store-shaped Release bundle builds and passes the structural verifier. Exact Apple distribution profiles are registered and installed. | Install the matching Apple Distribution private key, produce a trusted archive, then run a user-selected synthetic card import in the sandbox. |
 | Bookmark persistence and revocation | Core tests prove exact group-path selection, fail-closed missing-group behavior, and one-for-one security-scope lifetime. | Relaunch, reinsertion, stale bookmark, and revoked-permission checks in a genuinely provisioned sandbox. |
 | No scan before consent | The shared mount policy test proves the App Store edition reads no capacity, performs no media probe, and sends no distributed-notification handoff before consent. Both helper and observer use that policy. | Observe the helper/app flow with a synthetic card under the provisioned sandbox. |
-| Sandboxed helper mailbox | Existing mailbox/causality tests plus App Group path tests pass. | End-to-end login-item wake and mailbox delivery with the registered App Group. |
+| Sandboxed helper mailbox | Existing mailbox/causality tests plus App Group path tests pass. Both App IDs are assigned to the registered App Group. | End-to-end login-item wake and mailbox delivery from a trusted provisioned build. |
 | StoreKit | Four app-hosted local StoreKit tests pass with no skips; core policy covers free allowance and cancellation. | Sandbox/TestFlight purchase and restore after the IAP exists in App Store Connect. |
 | Both editions | 226 tests in 34 suites pass; direct and App Store Release builds succeed; direct Sparkle packaging and identifiers remain intact. | None locally. |
-| Archive inspection | Local ad-hoc App Store bundle passes identifiers, universal binaries, sandbox entitlements, privacy manifests, product ID, helper placement, test-artifact exclusion, and no-Sparkle checks. | A trusted distribution archive. The provisioned verifier currently fails closed because the exact embedded profiles do not exist. |
+| Archive inspection | Local ad-hoc App Store bundle passes identifiers, universal binaries, sandbox entitlements, privacy manifests, product ID, helper placement, test-artifact exclusion, and no-Sparkle checks. The exact app/helper profiles are installed and contain the expected App IDs and App Group. | A trusted distribution archive. Xcode reports the selected Apple Distribution certificate as `Not in Keychain` on this Mac. |
 
 The local Xcode Debug host used for StoreKit simulation currently reports an
 invalid signed-entitlements blob, so it is deliberately not counted as sandbox
@@ -128,26 +128,34 @@ evidence. `REQUIRE_PROVISIONED_SIGNATURE=1` is the authoritative signing gate.
 
 ## Apple Account Setup
 
-These are owner actions and are intentionally not performed by build scripts:
+Completed in the Apple Developer account on 2026-08-30:
 
-1. Register explicit App IDs for `media.jenny.sdimport` and
-   `media.jenny.sdimport.agent`.
-2. Register `group.media.jenny.sdimport`, associate both App IDs with it, and
-   enable App Sandbox/App Groups capabilities as required.
-3. Create the macOS app record in App Store Connect with
+- Registered explicit App IDs `media.jenny.sdimport` and
+  `media.jenny.sdimport.agent`.
+- Registered `group.media.jenny.sdimport`, enabled App Groups for both App IDs,
+  and assigned the exact group to both.
+- Created and installed `SD Import for Mac App Store` and
+  `SD Import Agent App Store` distribution profiles. Both expire 2027-07-03
+  and contain the expected application identifier and App Group entitlements.
+
+These owner actions remain and are intentionally not performed by build
+scripts:
+
+1. Install the private key for Apple Distribution certificate `YTAJ6D4BV2`,
+   or explicitly authorize creation of a replacement Apple Distribution
+   certificate and regenerate both profiles against it.
+2. Create the macOS app record in App Store Connect with
    `media.jenny.sdimport`.
-4. Create the non-consumable IAP `media.jenny.sdimport.unlimited`, including
+3. Create the non-consumable IAP `media.jenny.sdimport.unlimited`, including
    price, localization, review screenshot, and review notes.
-5. Complete paid-app agreements, tax, and banking requirements before testing
+4. Complete paid-app agreements, tax, and banking requirements before testing
    or selling the IAP.
-6. Install a currently trusted Apple Development certificate for local hosted
-   tests and an Apple Distribution certificate/profile for submission.
-7. Complete App Privacy, age rating, category, support URL, privacy URL,
+5. Complete App Privacy, age rating, category, support URL, privacy URL,
    screenshots, description, and review contact fields from the shipped build's
    behavior.
-8. Attach the IAP to the first app-version submission when App Store Connect
+6. Attach the IAP to the first app-version submission when App Store Connect
    requires it.
-9. Publish the updated `docs/privacy.html` and `docs/support.html` before
+7. Publish the updated `docs/privacy.html` and `docs/support.html` before
    submission. The production URLs respond, but as of 2026-08-30 they still
    serve the pre-App-Store disclosures from 2026-07-31.
 
