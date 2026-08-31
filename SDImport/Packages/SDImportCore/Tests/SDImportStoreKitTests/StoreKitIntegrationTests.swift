@@ -29,7 +29,7 @@ final class StoreKitIntegrationTests: XCTestCase {
         XCTAssertFalse(product.isFamilyShareable)
     }
 
-    func testPurchaseRestoreAndRefundLifecycle() async throws {
+    func testPurchaseAndRefundLifecycle() async throws {
         let purchased = makeManager(label: "purchase")
         await purchased.refreshStoreState()
         XCTAssertNotNil(purchased.productDisplayPrice)
@@ -45,14 +45,15 @@ final class StoreKitIntegrationTests: XCTestCase {
             matching: { !$0.hasLifetimeUnlock }
         )
         XCTAssertNotNil(refunded)
+    }
 
-        session.clearTransactions()
+    func testRestoreLifecycle() async throws {
         let restorablePurchase = makeManager(label: "restorable-purchase")
         await restorablePurchase.refreshStoreState()
         await restorablePurchase.purchase()
         XCTAssertTrue(restorablePurchase.hasLifetimeUnlock)
 
-        let restored = makeManager(label: "restore")
+        let restored = makeManager(label: "restore", observesTransactions: false)
         await restored.restorePurchases()
         XCTAssertTrue(restored.hasLifetimeUnlock)
         XCTAssertEqual(restored.purchaseStatus, .purchased)
@@ -82,6 +83,25 @@ final class StoreKitIntegrationTests: XCTestCase {
         XCTAssertEqual(unverified.purchaseStatus, .verificationFailed)
     }
 
+    func testRestoreVerificationFailureNeverUnlocks() async throws {
+        let restorablePurchase = makeManager(label: "unverified-restore-purchase")
+        await restorablePurchase.refreshStoreState()
+        await restorablePurchase.purchase()
+        XCTAssertTrue(restorablePurchase.hasLifetimeUnlock)
+
+        try await session.setSimulatedError(
+            .verification(.invalidSignature),
+            forAPI: .verification
+        )
+        let restored = makeManager(
+            label: "unverified-restore",
+            observesTransactions: false
+        )
+        await restored.restorePurchases()
+        XCTAssertFalse(restored.hasLifetimeUnlock)
+        XCTAssertEqual(restored.purchaseStatus, .verificationFailed)
+    }
+
     private func requireRuntimeProduct() async throws -> Product {
         let products = try await Product.products(
             for: [StoreKitTestPurchaseDriver.lifetimeProductIdentifier]
@@ -89,11 +109,17 @@ final class StoreKitIntegrationTests: XCTestCase {
         return try XCTUnwrap(products.first)
     }
 
-    private func makeManager(label: String) -> StoreKitTestPurchaseDriver {
+    private func makeManager(
+        label: String,
+        observesTransactions: Bool = true
+    ) -> StoreKitTestPurchaseDriver {
         let suiteName = "StoreKitIntegrationTests.\(label).\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
         defaults.removePersistentDomain(forName: suiteName)
-        return StoreKitTestPurchaseDriver(defaults: defaults)
+        return StoreKitTestPurchaseDriver(
+            defaults: defaults,
+            observesTransactions: observesTransactions
+        )
     }
 
     private func waitForState(

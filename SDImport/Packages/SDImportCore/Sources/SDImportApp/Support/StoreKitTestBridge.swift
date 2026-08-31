@@ -12,13 +12,15 @@ final class StoreKitTestPurchaseDriver {
 
     private let manager: PurchaseManager
 
-    init(defaults: UserDefaults) {
+    init(defaults: UserDefaults, observesTransactions: Bool = true) {
         manager = PurchaseManager(
             defaults: defaults,
             distribution: .macAppStore,
             startsStoreTask: false
         )
-        manager.startObservingTransactions()
+        if observesTransactions {
+            manager.startObservingTransactions()
+        }
     }
 
     var productDisplayPrice: String? {

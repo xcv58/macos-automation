@@ -40,6 +40,11 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: media.jenny.sdimport.agent
         PRODUCT_NAME: SDImportAgent
         SKIP_INSTALL: YES
+      configs:
+        Release:
+          CODE_SIGN_IDENTITY: Apple Distribution
+          CODE_SIGN_STYLE: Manual
+          PROVISIONING_PROFILE_SPECIFIER: SD Import Agent App Store
     postBuildScripts:
       - name: Embed Privacy Manifest
         script: |
@@ -80,6 +85,11 @@ targets:
         PRODUCT_MODULE_NAME: SDImportForMac
         PRODUCT_NAME: SD Import for Mac
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) SDIMPORT_MAC_APP_STORE"
+      configs:
+        Release:
+          CODE_SIGN_IDENTITY: Apple Distribution
+          CODE_SIGN_STYLE: Manual
+          PROVISIONING_PROFILE_SPECIFIER: SD Import for Mac App Store
     postBuildScripts:
       - name: Generate App Icon
         script: |

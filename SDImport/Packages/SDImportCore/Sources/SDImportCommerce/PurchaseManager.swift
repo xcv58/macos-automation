@@ -18,6 +18,8 @@ public final class PurchaseManager: ObservableObject {
     private let distribution: AppDistribution
     private var product: Product?
     private var updatesTask: Task<Void, Never>?
+    private var initialStoreRefreshTask: Task<Void, Never>?
+    private var entitlementRevision: UInt64 = 0
 
     public init(
         defaults: UserDefaults = .standard,
@@ -37,6 +39,7 @@ public final class PurchaseManager: ObservableObject {
 
     deinit {
         updatesTask?.cancel()
+        initialStoreRefreshTask?.cancel()
     }
 
     public var isMacAppStoreEdition: Bool {
@@ -128,7 +131,7 @@ public final class PurchaseManager: ObservableObject {
                     accessState.apply(.verificationFailed)
                     return
                 }
-                accessState.apply(.purchased)
+                applyVerifiedLifetimeEntitlement(restored: false)
                 await transaction.finish()
             case .pending:
                 accessState.apply(.pending)
@@ -154,7 +157,30 @@ public final class PurchaseManager: ObservableObject {
             if product == nil {
                 await loadProduct()
             }
-            await refreshEntitlement(restored: true)
+            for attempt in 0..<5 {
+                let hasCurrentEntitlement = await refreshEntitlement(restored: true)
+                let hasLatestTransaction: Bool
+                if
+                    hasCurrentEntitlement
+                        || accessState.purchaseStatus == .verificationFailed
+                {
+                    hasLatestTransaction = false
+                } else {
+                    hasLatestTransaction = await refreshLatestLifetimeTransaction(restored: true)
+                }
+                if hasCurrentEntitlement || hasLatestTransaction {
+                    return
+                }
+                guard
+                    accessState.purchaseStatus != .verificationFailed,
+                    attempt < 4
+                else {
+                    return
+                }
+                // AppStore.sync() can complete just before the restored
+                // transaction becomes visible to currentEntitlements.
+                try? await Task.sleep(for: .milliseconds(100))
+            }
         } catch StoreKitError.userCancelled {
             accessState.apply(.cancelled)
         } catch {
@@ -173,28 +199,35 @@ public final class PurchaseManager: ObservableObject {
             return
         }
         updatesTask = Task { [weak self] in
-            guard let self else {
-                return
+            for await verification in Transaction.updates {
+                guard !Task.isCancelled else {
+                    return
+                }
+                guard let self else {
+                    return
+                }
+                guard case .verified(let transaction) = verification else {
+                    accessState.apply(.verificationFailed)
+                    continue
+                }
+                guard transaction.productID == AppDistribution.lifetimeProductIdentifier else {
+                    continue
+                }
+                if transaction.revocationDate == nil {
+                    // The verified update is already authoritative. Re-querying
+                    // currentEntitlements here can briefly return the pre-update
+                    // snapshot and incorrectly treat a new purchase as revoked.
+                    applyVerifiedLifetimeEntitlement(restored: false)
+                } else {
+                    // A revocation can coexist with another valid transaction, so
+                    // resolve the complete entitlement set before locking access.
+                    await refreshEntitlement(restored: false)
+                }
+                await transaction.finish()
             }
-            await refreshStoreState()
-            await listenForTransactionUpdates()
         }
-    }
-
-    private func listenForTransactionUpdates() async {
-        for await verification in Transaction.updates {
-            guard !Task.isCancelled else {
-                return
-            }
-            guard case .verified(let transaction) = verification else {
-                accessState.apply(.verificationFailed)
-                continue
-            }
-            guard transaction.productID == AppDistribution.lifetimeProductIdentifier else {
-                continue
-            }
-            await refreshEntitlement(restored: false)
-            await transaction.finish()
+        initialStoreRefreshTask = Task { [weak self] in
+            await self?.refreshStoreState()
         }
     }
 
@@ -215,7 +248,9 @@ public final class PurchaseManager: ObservableObject {
         }
     }
 
-    func refreshEntitlement(restored: Bool) async {
+    @discardableResult
+    func refreshEntitlement(restored: Bool) async -> Bool {
+        let startingEntitlementRevision = entitlementRevision
         var isEntitled = false
         var encounteredVerificationFailure = false
         for await verification in Transaction.currentEntitlements {
@@ -231,13 +266,49 @@ public final class PurchaseManager: ObservableObject {
             }
         }
         if isEntitled {
-            accessState.apply(restored ? .restored : .purchased)
+            applyVerifiedLifetimeEntitlement(restored: restored)
+            return true
         } else if encounteredVerificationFailure {
             accessState.apply(.verificationFailed)
-        } else if accessState.hasLifetimeUnlock {
+        } else if
+            accessState.hasLifetimeUnlock,
+            entitlementRevision == startingEntitlementRevision
+        {
+            // A refresh can overlap a purchase while StoreKit still exposes
+            // its earlier entitlement snapshot. Only revoke the state that
+            // this refresh actually began checking.
+            entitlementRevision &+= 1
             accessState.apply(.revoked)
         } else if product != nil {
             accessState.apply(.productAvailable)
         }
+        return false
+    }
+
+    private func applyVerifiedLifetimeEntitlement(restored: Bool) {
+        entitlementRevision &+= 1
+        accessState.apply(restored ? .restored : .purchased)
+    }
+
+    private func refreshLatestLifetimeTransaction(restored: Bool) async -> Bool {
+        guard
+            let verification = await Transaction.latest(
+                for: AppDistribution.lifetimeProductIdentifier
+            )
+        else {
+            return false
+        }
+        guard case .verified(let transaction) = verification else {
+            accessState.apply(.verificationFailed)
+            return false
+        }
+        guard
+            transaction.productID == AppDistribution.lifetimeProductIdentifier,
+            transaction.revocationDate == nil
+        else {
+            return false
+        }
+        applyVerifiedLifetimeEntitlement(restored: restored)
+        return true
     }
 }
