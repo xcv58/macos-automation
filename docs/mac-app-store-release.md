@@ -176,6 +176,32 @@ consent, declines, and again proves no scan UI appears. The helper is
 unregistered and all exact temporary processes, app files, image, mount, and
 DerivedData are removed after the run.
 
+If macOS retains a disabled historical Login Items record, use the explicit
+two-stage path instead of trying to automate approval:
+
+```bash
+PREPARE_MAS_HELPER_QA_APPROVAL=1 \
+CONFIRM_CLEAN_MAS_QA_ACCOUNT=1 \
+DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer \
+./script/run_mas_helper_runtime_qa.sh
+
+# Manually allow SDImportAgent in System Settings > General >
+# Login Items & Extensions, then:
+RESUME_MAS_HELPER_QA_AFTER_APPROVAL=1 \
+CONFIRM_CLEAN_MAS_QA_ACCOUNT=1 \
+DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer \
+./script/run_mas_helper_runtime_qa.sh
+```
+
+Prepare mode keeps only the exact signed temporary app, its registration, and
+a receipt containing the current Git commit, both code-directory hashes, and
+the driver/wrapper hashes. Resume mode refuses a changed checkout, app, or QA
+tool, revalidates both embedded profiles and signatures, and then runs the same
+mailbox/consent driver without re-registering the approved item. A successful
+resume unregisters and removes everything. A failed resume preserves the
+approval state for diagnosis and retry. Neither mode can grant or bypass Login
+Items approval.
+
 This gate does not prove that macOS reports a physical card as removable or
 that `NSWorkspace.didMountNotification` reaches the helper. Keep physical
 insertion/reinsertion as a distinct pre-submission gate.

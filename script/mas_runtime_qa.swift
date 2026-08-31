@@ -243,6 +243,7 @@ private struct MacAppStoreRuntimeQA {
     private static let helperPrepareArgument = "--sdimport-helper-runtime-qa-prepare"
     private static let helperUnregisterArgument = "--sdimport-helper-runtime-qa-unregister"
     private static let helperInjectedMountArgument = "--sdimport-helper-runtime-qa-mount"
+    private static let helperApprovedRegistrationArgument = "--registration-already-approved"
     private static let launchArguments = [
         "-ApplePersistenceIgnoreState", "YES",
         "-SDImport.purchase.completedFreeImports", "0",
@@ -269,15 +270,26 @@ private struct MacAppStoreRuntimeQA {
             try await runManualImport(
                 appURL: URL(fileURLWithPath: arguments[0], isDirectory: true).standardizedFileURL
             )
-        } else if arguments.count == 3, arguments[0] == "helper" {
+        } else if (arguments.count == 3 || arguments.count == 4), arguments[0] == "helper" {
+            let registrationAlreadyApproved: Bool
+            if arguments.count == 4 {
+                guard arguments[3] == helperApprovedRegistrationArgument else {
+                    throw RuntimeQAError.failed("unknown helper QA option: \(arguments[3])")
+                }
+                registrationAlreadyApproved = true
+            } else {
+                registrationAlreadyApproved = false
+            }
             try await runHelperConsent(
                 appURL: URL(fileURLWithPath: arguments[1], isDirectory: true).standardizedFileURL,
-                mountURL: URL(fileURLWithPath: arguments[2], isDirectory: true).standardizedFileURL
+                mountURL: URL(fileURLWithPath: arguments[2], isDirectory: true).standardizedFileURL,
+                registrationAlreadyApproved: registrationAlreadyApproved
             )
         } else {
             throw RuntimeQAError.failed(
                 "usage: mas_runtime_qa.swift <app-bundle-path>\n"
-                    + "   or: mas_runtime_qa.swift helper <installed-app-bundle-path> <mounted-volume-path>"
+                    + "   or: mas_runtime_qa.swift helper <installed-app-bundle-path> "
+                    + "<mounted-volume-path> [--registration-already-approved]"
             )
         }
     }
@@ -429,7 +441,11 @@ private struct MacAppStoreRuntimeQA {
         print("Verified independently signed sandbox import, copied output, and bookmark-backed relaunch scan")
     }
 
-    private static func runHelperConsent(appURL: URL, mountURL: URL) async throws {
+    private static func runHelperConsent(
+        appURL: URL,
+        mountURL: URL,
+        registrationAlreadyApproved: Bool
+    ) async throws {
         guard appURL.path.hasPrefix("/Applications/") else {
             throw RuntimeQAError.failed("The helper QA app must be installed below /Applications")
         }
@@ -446,21 +462,31 @@ private struct MacAppStoreRuntimeQA {
         var helperRegistrationWasRequested = false
         do {
             terminateRunningCopies(of: appURL)
-            terminateRunningCopies(bundleIdentifier: helperBundleIdentifier, at: helperURL)
-
-            print("QA: registering and launching the real embedded login-item helper")
-            _ = try await launchApplication(
-                at: appURL,
-                arguments: [helperPrepareArgument] + launchArguments,
-                createsNewInstance: true
-            )
-            helperRegistrationWasRequested = true
-            _ = try await waitForRunningApplication(
-                bundleIdentifier: helperBundleIdentifier,
-                at: helperURL,
-                timeout: 15,
-                failure: "The registered embedded helper did not launch; check Login Items approval"
-            )
+            if registrationAlreadyApproved {
+                print("QA: verifying the previously approved embedded login-item helper")
+                _ = try await waitForRunningApplication(
+                    bundleIdentifier: helperBundleIdentifier,
+                    at: helperURL,
+                    timeout: 15,
+                    failure: "The approved embedded helper is not running; check Login Items approval"
+                )
+                helperRegistrationWasRequested = true
+            } else {
+                terminateRunningCopies(bundleIdentifier: helperBundleIdentifier, at: helperURL)
+                print("QA: registering and launching the real embedded login-item helper")
+                _ = try await launchApplication(
+                    at: appURL,
+                    arguments: [helperPrepareArgument] + launchArguments,
+                    createsNewInstance: true
+                )
+                helperRegistrationWasRequested = true
+                _ = try await waitForRunningApplication(
+                    bundleIdentifier: helperBundleIdentifier,
+                    at: helperURL,
+                    timeout: 15,
+                    failure: "The registered embedded helper did not launch; check Login Items approval"
+                )
+            }
             terminateRunningCopies(of: appURL)
             try await waitForNoRunningApplication(
                 bundleIdentifier: bundleIdentifier,
@@ -523,7 +549,7 @@ private struct MacAppStoreRuntimeQA {
             helperRegistrationWasRequested = false
             print("Verified signed helper registration, App Group handoff, explicit consent, and no-scan decline")
         } catch {
-            if helperRegistrationWasRequested {
+            if helperRegistrationWasRequested && !registrationAlreadyApproved {
                 try? await unregisterHelper(appURL: appURL, helperURL: helperURL)
             }
             terminateRunningCopies(of: appURL)
