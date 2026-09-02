@@ -42,6 +42,43 @@ struct AppStoreDistributionTests {
         #expect(AppDistribution.direct.staleBookmarkHandling == .refresh)
     }
 
+    @Test("destination defaults remain edition-specific")
+    func destinationDefaults() {
+        let homeDirectory = URL(fileURLWithPath: "/Users/tester", isDirectory: true)
+        let direct = AppConfiguration.defaultConfiguration(
+            homeDirectory: homeDirectory,
+            distribution: .direct
+        )
+        let appStore = AppConfiguration.defaultConfiguration(
+            homeDirectory: homeDirectory,
+            distribution: .macAppStore
+        )
+
+        #expect(direct.photosPath == "/Users/tester/Pictures/Photos")
+        #expect(direct.videosPath == "/Users/tester/Downloads")
+        #expect(appStore.photosPath.isEmpty)
+        #expect(appStore.videosPath.isEmpty)
+
+        #expect(
+            AppDistribution.direct.retainedDestinationPath(
+                "/Users/tester/Downloads",
+                hasAuthorizedAccess: false
+            ) == "/Users/tester/Downloads"
+        )
+        #expect(
+            AppDistribution.macAppStore.retainedDestinationPath(
+                "/Users/tester/Downloads",
+                hasAuthorizedAccess: true
+            ) == "/Users/tester/Downloads"
+        )
+        #expect(
+            AppDistribution.macAppStore.retainedDestinationPath(
+                "/Users/tester/Downloads",
+                hasAuthorizedAccess: false
+            ).isEmpty
+        )
+    }
+
     @Test("the App Store edition rejects stale bookmarks until the user selects again")
     func staleBookmarkPolicy() {
         #expect(

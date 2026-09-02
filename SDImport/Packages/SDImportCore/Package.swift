@@ -67,6 +67,13 @@ let package = Package(
                 "SDImportCore",
                 .product(name: "GRDB", package: "GRDB.swift")
             ]
+        ),
+        .testTarget(
+            name: "SDImportCommerceTests",
+            dependencies: [
+                "SDImportCommerce",
+                "SDImportCore"
+            ]
         )
     ]
 )

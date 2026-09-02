@@ -116,10 +116,12 @@ expect_plist_value "$APP_INFO" CFBundleDisplayName 'SD Import for Mac'
 expect_plist_value "$APP_INFO" SDImportDistribution app-store
 expect_plist_value "$APP_INFO" SDImportAppGroupIdentifier group.media.jenny.sdimport
 expect_plist_value "$APP_INFO" LSApplicationCategoryType public.app-category.photography
+expect_plist_value "$APP_INFO" ITSAppUsesNonExemptEncryption false
 expect_plist_value "$AGENT_INFO" CFBundleIdentifier media.jenny.sdimport.agent
 expect_plist_value "$AGENT_INFO" SDImportDistribution app-store
 expect_plist_value "$AGENT_INFO" SDImportMainBundleIdentifier media.jenny.sdimport
 expect_plist_value "$AGENT_INFO" SDImportAppGroupIdentifier group.media.jenny.sdimport
+expect_plist_value "$AGENT_INFO" ITSAppUsesNonExemptEncryption false
 
 for key in SUFeedURL SUPublicEDKey SUEnableAutomaticChecks SUAllowsAutomaticUpdates; do
   expect_absent_plist_key "$APP_INFO" "$key"

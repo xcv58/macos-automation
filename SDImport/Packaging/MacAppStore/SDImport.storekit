@@ -5,11 +5,11 @@
   "products" : [
     {
       "displayPrice" : "9.99",
-      "familyShareable" : false,
+      "familyShareable" : true,
       "internalID" : "321B01AA-00A4-4C4D-A4B1-53E76163FD8C",
       "localizations" : [
         {
-          "description" : "Unlock unlimited SD card imports for life.",
+          "description" : "Unlimited SD imports with Family Sharing.",
           "displayName" : "SD Import Unlimited",
           "locale" : "en_US"
         }

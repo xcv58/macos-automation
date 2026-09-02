@@ -63,11 +63,27 @@ public struct AppConfiguration: Codable, Equatable, Sendable {
         self.hiddenRecentPaths = hiddenRecentPaths
     }
 
-    public static func defaultConfiguration(homeDirectory: URL) -> AppConfiguration {
-        AppConfiguration(
+    public static func defaultConfiguration(
+        homeDirectory: URL,
+        distribution: AppDistribution = .direct
+    ) -> AppConfiguration {
+        let photosPath: String
+        let videosPath: String
+        switch distribution {
+        case .direct:
+            photosPath = homeDirectory.appendingPathComponent("Pictures/Photos", isDirectory: true).path
+            videosPath = homeDirectory.appendingPathComponent("Downloads", isDirectory: true).path
+        case .macAppStore:
+            // Standard-directory APIs resolve inside the sandbox container and
+            // do not grant access to the user's real media folders. Keep these
+            // unset until NSOpenPanel supplies a security-scoped URL.
+            photosPath = ""
+            videosPath = ""
+        }
+        return AppConfiguration(
             sourcePath: "/Volumes",
-            photosPath: homeDirectory.appendingPathComponent("Pictures/Photos", isDirectory: true).path,
-            videosPath: homeDirectory.appendingPathComponent("Downloads", isDirectory: true).path,
+            photosPath: photosPath,
+            videosPath: videosPath,
             defaultLocation: "Untitled"
         )
     }

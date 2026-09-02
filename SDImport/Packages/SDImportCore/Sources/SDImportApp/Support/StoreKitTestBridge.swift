@@ -27,6 +27,10 @@ final class StoreKitTestPurchaseDriver {
         manager.productDisplayPrice
     }
 
+    var isFamilyShareable: Bool {
+        manager.isFamilyShareable
+    }
+
     var hasLifetimeUnlock: Bool {
         manager.hasLifetimeUnlock
     }

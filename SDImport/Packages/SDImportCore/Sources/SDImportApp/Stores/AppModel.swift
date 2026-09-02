@@ -308,11 +308,18 @@ final class AppModel: ObservableObject {
 
     init(purchaseManager: PurchaseManager) {
         self.purchaseManager = purchaseManager
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
-        let storedSourcePath = defaults.string(forKey: DefaultsKeys.cardPath) ?? "/Volumes"
-        let storedPhotosPath = defaults.string(forKey: DefaultsKeys.photosPath) ?? "\(home)/Pictures/Photos"
-        let storedVideosPath = defaults.string(forKey: DefaultsKeys.videosPath) ?? "\(home)/Downloads"
-        let storedShootName = defaults.string(forKey: DefaultsKeys.location) ?? "Untitled"
+        let initialConfiguration = AppConfiguration.defaultConfiguration(
+            homeDirectory: FileManager.default.homeDirectoryForCurrentUser,
+            distribution: AppDistribution.current
+        )
+        let storedSourcePath = defaults.string(forKey: DefaultsKeys.cardPath)
+            ?? initialConfiguration.sourcePath
+        let storedPhotosPath = defaults.string(forKey: DefaultsKeys.photosPath)
+            ?? initialConfiguration.photosPath
+        let storedVideosPath = defaults.string(forKey: DefaultsKeys.videosPath)
+            ?? initialConfiguration.videosPath
+        let storedShootName = defaults.string(forKey: DefaultsKeys.location)
+            ?? initialConfiguration.defaultLocation
         let storedWorkflowProfile = ImportWorkflowProfile(
             rawValue: defaults.string(forKey: DefaultsKeys.workflowProfile) ?? ""
         ) ?? .mixedShootSession
@@ -429,6 +436,9 @@ final class AppModel: ObservableObject {
             }
 #endif
             refreshFolderAccesses()
+            if clearUnauthorizedAppStoreDestinationDefaults() {
+                _ = savePreferences()
+            }
             let recovery = try RecoveryService(jobRepository: JobRepository(pool: pool))
                 .recoverInterruptedImports()
             refreshAvailableSourceVolumes()
@@ -3784,6 +3794,41 @@ final class AppModel: ObservableObject {
         for purpose in BookmarkPurpose.allCases {
             refreshFolderAccess(purpose)
         }
+    }
+
+    /// Removes legacy containerized or typed destination fallbacks that have
+    /// no corresponding sandbox grant. A valid security-scoped bookmark keeps
+    /// its path, and the direct edition retains its historical defaults.
+    @discardableResult
+    private func clearUnauthorizedAppStoreDestinationDefaults() -> Bool {
+        guard AppDistribution.current == .macAppStore else {
+            return false
+        }
+
+        var changed = false
+        let hasPhotosAccess = !importDefaults.photosPath.isEmpty
+            && hasActiveFolderAccess(covering: importDefaults.photosPath)
+        let retainedPhotosPath = AppDistribution.current.retainedDestinationPath(
+            importDefaults.photosPath,
+            hasAuthorizedAccess: hasPhotosAccess
+        )
+        if retainedPhotosPath != importDefaults.photosPath {
+            importDefaults.photosPath = retainedPhotosPath
+            photosPath = retainedPhotosPath
+            changed = true
+        }
+        let hasVideosAccess = !importDefaults.videosPath.isEmpty
+            && hasActiveFolderAccess(covering: importDefaults.videosPath)
+        let retainedVideosPath = AppDistribution.current.retainedDestinationPath(
+            importDefaults.videosPath,
+            hasAuthorizedAccess: hasVideosAccess
+        )
+        if retainedVideosPath != importDefaults.videosPath {
+            importDefaults.videosPath = retainedVideosPath
+            videosPath = retainedVideosPath
+            changed = true
+        }
+        return changed
     }
 
     private func refreshFolderAccess(_ purpose: BookmarkPurpose) {

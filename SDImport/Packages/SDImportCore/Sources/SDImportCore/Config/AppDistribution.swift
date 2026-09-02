@@ -80,4 +80,16 @@ public enum AppDistribution: String, Codable, Sendable {
             .requireNewSelection
         }
     }
+
+    public func retainedDestinationPath(
+        _ path: String,
+        hasAuthorizedAccess: Bool
+    ) -> String {
+        switch self {
+        case .direct:
+            path
+        case .macAppStore:
+            hasAuthorizedAccess ? path : ""
+        }
+    }
 }

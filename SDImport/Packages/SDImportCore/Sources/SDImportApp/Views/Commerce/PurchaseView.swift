@@ -14,12 +14,16 @@ struct PurchaseView: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Unlock Unlimited Imports")
                     .font(.title2.bold())
-                Text("Keep previewing every card for free. A one-time purchase unlocks unlimited completed imports on this Apple ID.")
+                Text("Keep previewing every card for free. A one-time purchase unlocks unlimited completed imports.")
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
             Label(purchaseManager.allowanceSummary, systemImage: "checkmark.circle")
+
+            if purchaseManager.isFamilyShareable {
+                Label("Shareable with Family Sharing", systemImage: "person.3")
+            }
 
             if let status = purchaseManager.statusMessage {
                 Text(status)
@@ -46,17 +50,18 @@ struct PurchaseView: View {
 
                 Button(purchaseButtonTitle) {
                     Task {
-                        await purchaseManager.purchase()
+                        if purchaseManager.productDisplayPrice == nil {
+                            await purchaseManager.refreshStoreState()
+                        } else {
+                            await purchaseManager.purchase()
+                        }
                         if purchaseManager.hasLifetimeUnlock {
                             dismiss()
                         }
                     }
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(
-                    purchaseManager.productDisplayPrice == nil
-                        || purchaseManager.isPerformingStoreOperation
-                )
+                .disabled(purchaseManager.isPerformingStoreOperation)
             }
         }
         .padding(24)
@@ -64,8 +69,9 @@ struct PurchaseView: View {
     }
 
     private var purchaseButtonTitle: String {
-        purchaseManager.productDisplayPrice.map {
-            "Buy for \($0)"
-        } ?? "Loading…"
+        if let price = purchaseManager.productDisplayPrice {
+            return "Buy for \(price)"
+        }
+        return purchaseManager.isPerformingStoreOperation ? "Loading…" : "Try Again"
     }
 }

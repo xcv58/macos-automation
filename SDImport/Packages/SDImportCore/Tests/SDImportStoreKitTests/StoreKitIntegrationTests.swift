@@ -26,7 +26,11 @@ final class StoreKitIntegrationTests: XCTestCase {
         XCTAssertEqual(product.id, "media.jenny.sdimport.unlimited")
         XCTAssertEqual(product.type, .nonConsumable)
         XCTAssertEqual(product.displayName, "SD Import Unlimited")
-        XCTAssertFalse(product.isFamilyShareable)
+        XCTAssertTrue(product.isFamilyShareable)
+
+        let manager = makeManager(label: "metadata", observesTransactions: false)
+        await manager.refreshStoreState()
+        XCTAssertTrue(manager.isFamilyShareable)
     }
 
     func testPurchaseAndRefundLifecycle() async throws {
@@ -83,8 +87,8 @@ final class StoreKitIntegrationTests: XCTestCase {
         XCTAssertEqual(unverified.purchaseStatus, .verificationFailed)
     }
 
-    func testRestoreVerificationFailureNeverUnlocks() async throws {
-        let restorablePurchase = makeManager(label: "unverified-restore-purchase")
+    func testRestoreTrustsAnAlreadyVerifiedCachedEntitlement() async throws {
+        let restorablePurchase = makeManager(label: "cached-restore-purchase")
         await restorablePurchase.refreshStoreState()
         await restorablePurchase.purchase()
         XCTAssertTrue(restorablePurchase.hasLifetimeUnlock)
@@ -94,12 +98,12 @@ final class StoreKitIntegrationTests: XCTestCase {
             forAPI: .verification
         )
         let restored = makeManager(
-            label: "unverified-restore",
+            label: "cached-restore",
             observesTransactions: false
         )
         await restored.restorePurchases()
-        XCTAssertFalse(restored.hasLifetimeUnlock)
-        XCTAssertEqual(restored.purchaseStatus, .verificationFailed)
+        XCTAssertTrue(restored.hasLifetimeUnlock)
+        XCTAssertEqual(restored.purchaseStatus, .purchased)
     }
 
     private func requireRuntimeProduct() async throws -> Product {
