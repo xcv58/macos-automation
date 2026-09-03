@@ -269,20 +269,18 @@ Completed in the Apple Developer account through 2026-09-03:
   contain `group.media.jenny.sdimport`.
 - Created the macOS App Store Connect record `SD Import for Mac` with Apple ID
   `6807178069`, bundle ID `media.jenny.sdimport`, SKU
-  `media.jenny.sdimport.macos`, and version 1.0 in Prepare for Submission.
+  `media.jenny.sdimport.macos`, and version 1.0.
 - Rechecked the saved 1.0 draft on 2026-09-03. It contains Build 4, the five
   refreshed screenshots in the intended order, the complete description and
   canonical support/marketing URLs, the `sd@jenny.media` review contact, and
   manual release. App Information reports Photo & Video with secondary
   Utilities and age rating 4+. App Privacy is published with `Data Not
   Collected` and the canonical privacy URL. Pricing reports 175 available
-  countries or regions with Public distribution. `Add for Review` is enabled
-  but was deliberately not used.
+  countries or regions with Public distribution.
 - Created the non-consumable IAP `SD Import Unlimited` with Apple ID
   `6807199159` and product ID `media.jenny.sdimport.unlimited`. Its worldwide
   availability, U.S. base price of USD 9.99, English (U.S.) localization, and
-  review notes are saved in Prepare for Submission, and Family Sharing is
-  enabled.
+  review notes are saved, and Family Sharing is enabled.
 - Verified the Free Apps and Paid Apps agreements, banking, U.S. tax, and DSA
   compliance entry are present for Jenny Media LLC. The prior non-trader choice
   was identified and changed to trader on 2026-09-03. App Store Connect now
@@ -295,15 +293,19 @@ Completed in the Apple Developer account through 2026-09-03:
 The two distribution profiles cannot be used for local runtime QA because macOS
 does not launch App Store distribution builds outside App Store/TestFlight.
 
-Two additional owner-facing release tasks were completed through App Store
+Three additional owner-facing release tasks were completed through App Store
 Connect on 2026-09-03. The DSA trader declaration is verified and Active. The
 IAP review screenshot is also complete: an opaque 2560 x 1600 JPEG re-encoding
 of the real purchase sheet from the checked-in StoreKit configuration was
-uploaded and visually verified without black framing. A fresh non-owner sandbox
+uploaded and visually verified without black framing. Finally, macOS 1.0 Build
+4 and `SD Import Unlimited` were added to the same review submission and
+submitted with explicit owner authorization. Submission
+`adc08664-db2c-4d3b-93bb-d77d1caf6284` shows both items `Waiting for Review`,
+submitted by Yihong Chen on 2026-09-03 at 5:42 PM EDT. A fresh non-owner sandbox
 account is needed only if a processed-build purchase capture is required.
 
-These owner actions remain and are intentionally not performed by build
-scripts:
+These post-submission follow-ups remain and are intentionally not performed by
+build scripts:
 
 1. Capture the preferred consent-prompt screenshot after inserting an allowed
    removable card. Do not use `Sandisk 4T`.
@@ -311,12 +313,10 @@ scripts:
    grant/revoke pass with a separate sandbox-family account. Otherwise record
    explicit acceptance of the residual platform-integration risk; code review
    and local StoreKit tests are strong evidence but are not a live pass.
-3. Perform the final App Store Connect validation of App Privacy, age rating,
-   category, support URL, privacy URL, description, review contact, and other
-   required metadata. The five refreshed Mac screenshots are already uploaded
-   to the 1.0 draft in the intended order.
-4. Prepare the first app-version submission and attach the IAP when App Store
-   Connect requires it; do not submit without separate owner authorization.
+3. Monitor App Review and respond if Apple requests information or a new build.
+   Do not cancel or replace the active submission without separate owner
+   authorization. Because manual release is selected, an approval does not
+   publish the app until the owner separately releases version 1.0.
 
 The public-site gate is complete. On 2026-09-03, the updated site was deployed
 to Vercel project `macos-automation`, `sd.jenny.media` was attached and verified,
@@ -335,11 +335,12 @@ The exact owner-reviewed fields, copy, review notes, privacy draft, and
 screenshot plan are maintained in
 [`app-store-connect-metadata.md`](app-store-connect-metadata.md).
 
-The local archive gate now passes without overrides. The remaining release gates
-are final App Store Connect validation, explicit acceptance or live testing of
-the sandbox Family Sharing residual risk, and first-submission preparation. The
-manual matrix below records the tested evidence and remaining optional capture
-gaps.
+The local archive gate now passes without overrides and the first app/IAP review
+submission is Waiting for Review. The remaining release gates are Apple's review
+outcome and, if approved, the separately authorized manual release. Live sandbox
+Family Sharing remains an explicitly accepted residual platform-integration
+risk, and the manual matrix below records the tested evidence and optional
+future capture gaps.
 
 ## App Store Assets And Metadata
 
