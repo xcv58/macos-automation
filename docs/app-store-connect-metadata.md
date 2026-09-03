@@ -181,7 +181,12 @@ only if it remains clear at the accepted dimensions.
 Capture status on 2026-09-03:
 
 - Ready: scan result/file preview, destination organization plan, lifetime
-  purchase sheet, and successful synthetic import receipt.
+  purchase sheet, and successful synthetic import receipt. All prepared files
+  are opaque 2560 x 1600 PNGs without a black canvas. The Build 4 file, plan,
+  receipt, and Settings images are window-only captures without the external
+  remote-control indicator. The purchase image retains the genuine local
+  StoreKit sheet and removes only that external indicator from the otherwise
+  blank titlebar area.
 - Supplemental QA proof: exact installed TestFlight Build 4 Settings showing
   `Background helper: Running` and `Lifetime access unlocked`.
 - Still needed for the preferred five-image set: a fresh consent-prompt capture

@@ -276,7 +276,11 @@ Completed in the Apple Developer account through 2026-08-31:
   review notes are saved in Prepare for Submission, and Family Sharing is
   enabled.
 - Verified the Free Apps and Paid Apps agreements, banking, U.S. tax, and DSA
-  entries are active for Jenny Media LLC.
+  compliance entry are present for Jenny Media LLC. The trader classification
+  is not yet verified. Apple's published self-assessment factors strongly point
+  to trader status because the app is offered by a business and earns revenue
+  from an in-app purchase; final classification remains the account holder's
+  legal self-assessment.
 
 The two distribution profiles cannot be used for local runtime QA because macOS
 does not launch App Store distribution builds outside App Store/TestFlight.
@@ -284,21 +288,27 @@ does not launch App Store distribution builds outside App Store/TestFlight.
 These owner actions remain and are intentionally not performed by build
 scripts:
 
-1. Review and upload the prepared IAP review screenshot. It uses the real
+1. Complete and verify the DSA trader declaration before enabling EU
+   distribution. This requires public trader contact information, email and
+   phone verification, and a current business or legal document that verifies
+   the organization's name and address. The working support mailbox is
+   `sd@jenny.media`; keep personal review-contact details and verification
+   documents out of the repository.
+2. Review and upload the prepared IAP review screenshot. It uses the real
    purchase sheet from the checked-in StoreKit configuration because the
    current TestFlight account already owns the product; a fresh non-owner
    sandbox account is needed only if a processed-build purchase capture is
    required.
-2. Capture the preferred consent-prompt screenshot after inserting an allowed
+3. Capture the preferred consent-prompt screenshot after inserting an allowed
    removable card. Do not use `Sandisk 4T`.
-3. If suitable accounts can be created, complete a live sandbox Family Sharing
+4. If suitable accounts can be created, complete a live sandbox Family Sharing
    grant/revoke pass with a separate sandbox-family account. Otherwise record
    explicit acceptance of the residual platform-integration risk; code review
    and local StoreKit tests are strong evidence but are not a live pass.
-4. Complete App Privacy, age rating, category, support URL, privacy URL,
+5. Complete App Privacy, age rating, category, support URL, privacy URL,
    screenshots, description, and review contact fields from the shipped build's
    behavior.
-5. Prepare the first app-version submission and attach the IAP when App Store
+6. Prepare the first app-version submission and attach the IAP when App Store
    Connect requires it; do not submit without separate owner authorization.
 
 The public-site gate is complete. On 2026-09-03, the updated site was deployed
@@ -306,9 +316,13 @@ to Vercel project `macos-automation`, `sd.jenny.media` was attached and verified
 and the home, privacy, and support pages returned HTTPS 200. The legacy
 `sd-import.jenny.media` and `macos-automation.vercel.app` aliases remain live,
 so Build 4's embedded links still reach the current disclosures. The support
-address is `sd@jenny.media`, and the website gallery and 16.5-second H.264
-workflow preview use the clean synthetic Build 4 capture set rather than the
-older DJI filenames, volume names, and destination paths.
+address is `sd@jenny.media`, and the owner confirmed that mailbox works. A new
+window-only light/dark Build 4 capture set and 16.5-second H.264 workflow preview
+are prepared locally at 8:5 without the external remote-control indicator or an
+embedded black canvas. Both themes were visually checked in a local Chrome
+preview, and every new image, stylesheet, and video request returned HTTP 200.
+The public site still needs to be redeployed and checked before the new
+presentation can be called live.
 
 The exact owner-reviewed fields, copy, review notes, privacy draft, and
 screenshot plan are maintained in
@@ -332,8 +346,12 @@ Prepare these items before creating the first submission:
   accepted 16:10 size: 1280 x 800, 1440 x 900, 2560 x 1600, or 2880 x 1800.
   Include the scan-consent prompt, preview, destination planning, purchase
   screen, and completed-import report without personal filenames or volumes.
-  Four 2560 x 1600 images are prepared from synthetic media; the consent prompt
-  remains to be captured from an allowed removable card.
+  Five opaque 2560 x 1600 images are prepared: file preview, destination plan,
+  lifetime purchase sheet, successful synthetic receipt, and supplemental
+  exact-Build-4 Settings proof. The Build 4 images are new window-only captures;
+  the purchase image retains the genuine local StoreKit UI and removes only the
+  external remote-control indicator from the otherwise blank titlebar area. The
+  consent prompt remains to be captured from an allowed removable card.
 - App Review contact details and notes that describe the background helper,
   the two-step scan consent, the first completed import being free, where to
   purchase or restore, and how to exercise the flow with synthetic media.
