@@ -251,7 +251,7 @@ alone is therefore still insufficient; the verifier result is the evidence.
 
 ## Apple Account Setup
 
-Completed in the Apple Developer account through 2026-08-31:
+Completed in the Apple Developer account through 2026-09-03:
 
 - Registered explicit App IDs `media.jenny.sdimport` and
   `media.jenny.sdimport.agent`.
@@ -270,45 +270,52 @@ Completed in the Apple Developer account through 2026-08-31:
 - Created the macOS App Store Connect record `SD Import for Mac` with Apple ID
   `6807178069`, bundle ID `media.jenny.sdimport`, SKU
   `media.jenny.sdimport.macos`, and version 1.0 in Prepare for Submission.
+- Rechecked the saved 1.0 draft on 2026-09-03. It contains Build 4, the five
+  refreshed screenshots in the intended order, the complete description and
+  canonical support/marketing URLs, the `sd@jenny.media` review contact, and
+  manual release. App Information reports Photo & Video with secondary
+  Utilities and age rating 4+. App Privacy is published with `Data Not
+  Collected` and the canonical privacy URL. Pricing reports 175 available
+  countries or regions with Public distribution. `Add for Review` is enabled
+  but was deliberately not used.
 - Created the non-consumable IAP `SD Import Unlimited` with Apple ID
   `6807199159` and product ID `media.jenny.sdimport.unlimited`. Its worldwide
   availability, U.S. base price of USD 9.99, English (U.S.) localization, and
   review notes are saved in Prepare for Submission, and Family Sharing is
   enabled.
 - Verified the Free Apps and Paid Apps agreements, banking, U.S. tax, and DSA
-  compliance entry are present for Jenny Media LLC. The trader classification
-  is not yet verified. Apple's published self-assessment factors strongly point
-  to trader status because the app is offered by a business and earns revenue
-  from an in-app purchase; final classification remains the account holder's
-  legal self-assessment.
+  compliance entry are present for Jenny Media LLC. The prior non-trader choice
+  was identified and changed to trader on 2026-09-03. App Store Connect now
+  reports Digital Services Act status `Active`, last updated 2026-09-03.
+  Reopening the record confirms `I'm a trader under the DSA` is selected and
+  the verified public support email and phone are saved with the D&B-supplied
+  business address. Apple did not request a separate business document in this
+  completed flow.
 
 The two distribution profiles cannot be used for local runtime QA because macOS
 does not launch App Store distribution builds outside App Store/TestFlight.
 
+Two additional owner-facing release tasks were completed through App Store
+Connect on 2026-09-03. The DSA trader declaration is verified and Active. The
+IAP review screenshot is also complete: an opaque 2560 x 1600 JPEG re-encoding
+of the real purchase sheet from the checked-in StoreKit configuration was
+uploaded and visually verified without black framing. A fresh non-owner sandbox
+account is needed only if a processed-build purchase capture is required.
+
 These owner actions remain and are intentionally not performed by build
 scripts:
 
-1. Complete and verify the DSA trader declaration before enabling EU
-   distribution. This requires public trader contact information, email and
-   phone verification, and a current business or legal document that verifies
-   the organization's name and address. The working support mailbox is
-   `sd@jenny.media`; keep personal review-contact details and verification
-   documents out of the repository.
-2. Review and upload the prepared IAP review screenshot. It uses the real
-   purchase sheet from the checked-in StoreKit configuration because the
-   current TestFlight account already owns the product; a fresh non-owner
-   sandbox account is needed only if a processed-build purchase capture is
-   required.
-3. Capture the preferred consent-prompt screenshot after inserting an allowed
+1. Capture the preferred consent-prompt screenshot after inserting an allowed
    removable card. Do not use `Sandisk 4T`.
-4. If suitable accounts can be created, complete a live sandbox Family Sharing
+2. If suitable accounts can be created, complete a live sandbox Family Sharing
    grant/revoke pass with a separate sandbox-family account. Otherwise record
    explicit acceptance of the residual platform-integration risk; code review
    and local StoreKit tests are strong evidence but are not a live pass.
-5. Complete App Privacy, age rating, category, support URL, privacy URL,
-   screenshots, description, and review contact fields from the shipped build's
-   behavior.
-6. Prepare the first app-version submission and attach the IAP when App Store
+3. Perform the final App Store Connect validation of App Privacy, age rating,
+   category, support URL, privacy URL, description, review contact, and other
+   required metadata. The five refreshed Mac screenshots are already uploaded
+   to the 1.0 draft in the intended order.
+4. Prepare the first app-version submission and attach the IAP when App Store
    Connect requires it; do not submit without separate owner authorization.
 
 The public-site gate is complete. On 2026-09-03, the updated site was deployed
@@ -318,19 +325,21 @@ and the home, privacy, and support pages returned HTTPS 200. The legacy
 so Build 4's embedded links still reach the current disclosures. The support
 address is `sd@jenny.media`, and the owner confirmed that mailbox works. A new
 window-only light/dark Build 4 capture set and 16.5-second H.264 workflow preview
-are prepared locally at 8:5 without the external remote-control indicator or an
-embedded black canvas. Both themes were visually checked in a local Chrome
-preview, and every new image, stylesheet, and video request returned HTTP 200.
-The public site still needs to be redeployed and checked before the new
-presentation can be called live.
+were deployed on 2026-09-03 from a 41-file public-only staging package. The live
+home page references the `20260903-clean` assets; the home, privacy, support,
+and video requests returned HTTP 200, and Chrome visual verification showed
+clean screenshots without the external remote-control indicator or an embedded
+black canvas.
 
 The exact owner-reviewed fields, copy, review notes, privacy draft, and
 screenshot plan are maintained in
 [`app-store-connect-metadata.md`](app-store-connect-metadata.md).
 
 The local archive gate now passes without overrides. The remaining release gates
-are App Store Connect validation, sandbox/TestFlight commerce testing, and the
-manual matrix below.
+are final App Store Connect validation, explicit acceptance or live testing of
+the sandbox Family Sharing residual risk, and first-submission preparation. The
+manual matrix below records the tested evidence and remaining optional capture
+gaps.
 
 ## App Store Assets And Metadata
 
@@ -346,9 +355,10 @@ Prepare these items before creating the first submission:
   accepted 16:10 size: 1280 x 800, 1440 x 900, 2560 x 1600, or 2880 x 1800.
   Include the scan-consent prompt, preview, destination planning, purchase
   screen, and completed-import report without personal filenames or volumes.
-  Five opaque 2560 x 1600 images are prepared: file preview, destination plan,
-  lifetime purchase sheet, successful synthetic receipt, and supplemental
-  exact-Build-4 Settings proof. The Build 4 images are new window-only captures;
+  Five opaque 2560 x 1600 images are uploaded to the 1.0 draft in this order:
+  file preview, destination plan, lifetime purchase sheet, successful synthetic
+  receipt, and supplemental exact-Build-4 Settings proof. The Build 4 images are
+  new window-only captures;
   the purchase image retains the genuine local StoreKit UI and removes only the
   external remote-control indicator from the otherwise blank titlebar area. The
   consent prompt remains to be captured from an allowed removable card.
