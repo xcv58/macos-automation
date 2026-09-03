@@ -84,7 +84,7 @@ numbers, account names, and any media metadata you do not want public.
 Public GitHub issues are visible to everyone. Do not attach private photos,
 videos, full card dumps, credentials, or unredacted logs to public issues.
 
-Support email: [i@xcv58.com](mailto:i@xcv58.com)
+Support email: [sd@jenny.media](mailto:sd@jenny.media)
 
 ## Changes
 

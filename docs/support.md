@@ -1,6 +1,6 @@
 # SD Import Support
 
-Support email: [i@xcv58.com](mailto:i@xcv58.com)
+Support email: [sd@jenny.media](mailto:sd@jenny.media)
 
 Public bugs and feature requests should use GitHub Issues:
 

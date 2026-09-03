@@ -6,8 +6,14 @@ raycast-extension/node_modules/
 raycast-extension/.output/
 
 .tmp/
+.vercel/
+docs/.vercel/
+.env*
 
 .build/
 SDImport/Packages/*/.build/
+SDImport/Packages/*/.swiftpm/
 SDImport/.derived-data-app-store/
+SDImport/*.xcodeproj/project.xcworkspace/xcuserdata/
+SDImport/*.xcodeproj/xcuserdata/
 dist/

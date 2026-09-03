@@ -51,10 +51,17 @@ the localized App Store price.
 
 ### IAP Review Screenshot
 
-Capture the purchase sheet from the processed Mac App Store/TestFlight build
-with the localized `$9.99` price visible. Use an accepted Mac screenshot size,
-preferably 2560 x 1600, with no personal filenames, volume names, or paths.
-This screenshot is review-only and is not displayed on the product page.
+The prepared 2560 x 1600 review image shows the real purchase sheet rendered
+by the app's checked-in StoreKit configuration, including the localized `$9.99`
+price and Family Sharing disclosure. It was captured from a local StoreKit
+session because the current TestFlight account already owns the non-consumable
+and therefore cannot present the pre-purchase sheet. The image uses only
+synthetic media and contains no personal filenames, volume names, or paths.
+
+Use this image as the IAP review screenshot. If App Review requires a capture
+from the processed TestFlight build, repeat the same flow with a fresh sandbox
+account that does not own the product; do not describe the local StoreKit image
+as a TestFlight purchase capture.
 
 ## Product Page Copy
 
@@ -100,9 +107,9 @@ Import does not upload media or automatically delete files from a source card.
 
 ### URLs
 
-- Support URL: `https://macos-automation.vercel.app/support.html`
-- Marketing URL: `https://macos-automation.vercel.app/`
-- Privacy policy URL: `https://macos-automation.vercel.app/privacy.html`
+- Support URL: `https://sd.jenny.media/support.html`
+- Marketing URL: `https://sd.jenny.media/`
+- Privacy policy URL: `https://sd.jenny.media/privacy.html`
 
 Publish the current `docs/support.html` and `docs/privacy.html` before entering
 these URLs in a submission, then verify the production responses in a private
@@ -170,3 +177,15 @@ transparency or personal media:
 
 Use screenshot 4 as the IAP review screenshot as well as a product-page image
 only if it remains clear at the accepted dimensions.
+
+Capture status on 2026-09-03:
+
+- Ready: scan result/file preview, destination organization plan, lifetime
+  purchase sheet, and successful synthetic import receipt.
+- Supplemental QA proof: exact installed TestFlight Build 4 Settings showing
+  `Background helper: Running` and `Lifetime access unlocked`.
+- Still needed for the preferred five-image set: a fresh consent-prompt capture
+  from an allowed removable card. `Sandisk 4T` was not and must not be used.
+- The successful receipt contains no named eject action because the screenshot
+  source was an isolated synthetic folder. Existing Build 3 physical-card QA
+  remains the tested eject evidence.

@@ -284,20 +284,31 @@ does not launch App Store distribution builds outside App Store/TestFlight.
 These owner actions remain and are intentionally not performed by build
 scripts:
 
-1. Capture and upload the IAP review screenshot from a processed App Store or
-   TestFlight build.
-2. If suitable accounts can be created, complete a live sandbox Family Sharing
+1. Review and upload the prepared IAP review screenshot. It uses the real
+   purchase sheet from the checked-in StoreKit configuration because the
+   current TestFlight account already owns the product; a fresh non-owner
+   sandbox account is needed only if a processed-build purchase capture is
+   required.
+2. Capture the preferred consent-prompt screenshot after inserting an allowed
+   removable card. Do not use `Sandisk 4T`.
+3. If suitable accounts can be created, complete a live sandbox Family Sharing
    grant/revoke pass with a separate sandbox-family account. Otherwise record
    explicit acceptance of the residual platform-integration risk; code review
    and local StoreKit tests are strong evidence but are not a live pass.
-3. Complete App Privacy, age rating, category, support URL, privacy URL,
+4. Complete App Privacy, age rating, category, support URL, privacy URL,
    screenshots, description, and review contact fields from the shipped build's
    behavior.
-4. Prepare the first app-version submission and attach the IAP when App Store
+5. Prepare the first app-version submission and attach the IAP when App Store
    Connect requires it; do not submit without separate owner authorization.
-5. Publish the updated `docs/privacy.html` and `docs/support.html` before
-   submission. The production URLs respond, but as of 2026-08-30 they still
-   serve the pre-App-Store disclosures from 2026-07-31.
+
+The public-site gate is complete. On 2026-09-03, the updated site was deployed
+to Vercel project `macos-automation`, `sd.jenny.media` was attached and verified,
+and the home, privacy, and support pages returned HTTPS 200. The legacy
+`sd-import.jenny.media` and `macos-automation.vercel.app` aliases remain live,
+so Build 4's embedded links still reach the current disclosures. The support
+address is `sd@jenny.media`, and the website gallery and 16.5-second H.264
+workflow preview use the clean synthetic Build 4 capture set rather than the
+older DJI filenames, volume names, and destination paths.
 
 The exact owner-reviewed fields, copy, review notes, privacy draft, and
 screenshot plan are maintained in
@@ -314,13 +325,15 @@ Prepare these items before creating the first submission:
 - App name `SD Import for Mac`, free app price, primary category Photography,
   age rating, content-rights answer, availability, copyright, and release mode.
 - Subtitle, description, keywords, support URL, and privacy policy URL. The
-  current in-app links are `https://macos-automation.vercel.app/support.html`
-  and `https://macos-automation.vercel.app/privacy.html`; recheck both from the
-  production build before submission.
+  App Store metadata URLs are `https://sd.jenny.media/support.html` and
+  `https://sd.jenny.media/privacy.html`. Build 4's legacy
+  `macos-automation.vercel.app` links resolve to the same deployed content.
 - Between one and ten Mac screenshots, all without transparency, at one
   accepted 16:10 size: 1280 x 800, 1440 x 900, 2560 x 1600, or 2880 x 1800.
   Include the scan-consent prompt, preview, destination planning, purchase
   screen, and completed-import report without personal filenames or volumes.
+  Four 2560 x 1600 images are prepared from synthetic media; the consent prompt
+  remains to be captured from an allowed removable card.
 - App Review contact details and notes that describe the background helper,
   the two-step scan consent, the first completed import being free, where to
   purchase or restore, and how to exercise the flow with synthetic media.
