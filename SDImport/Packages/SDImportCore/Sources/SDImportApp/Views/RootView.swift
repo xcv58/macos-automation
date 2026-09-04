@@ -1,8 +1,10 @@
 import SDImportCore
+import SDImportCommerce
 import SwiftUI
 
 struct RootView: View {
     @EnvironmentObject private var model: AppModel
+    @EnvironmentObject private var purchaseManager: PurchaseManager
     @State private var columnVisibility = NavigationSplitViewVisibility.all
 
     let appUpdater: AppUpdater
@@ -53,6 +55,10 @@ struct RootView: View {
         .sheet(item: $model.reportPresentation) { presentation in
             ImportReportView(presentation: presentation)
                 .environmentObject(model)
+        }
+        .sheet(isPresented: $purchaseManager.isShowingPurchase) {
+            PurchaseView()
+                .environmentObject(purchaseManager)
         }
     }
 

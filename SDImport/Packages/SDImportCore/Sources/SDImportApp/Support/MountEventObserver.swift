@@ -5,6 +5,7 @@ import SDImportCore
 @MainActor
 final class MountEventObserver {
     private let detector = VolumeDetector()
+    private let mountPrivacyPolicy: MountPrivacyPolicy
     private var debouncer = MountDebouncer()
     private var token: NSObjectProtocol?
     private var distributedToken: NSObjectProtocol?
@@ -20,12 +21,14 @@ final class MountEventObserver {
 
     init(
         applicationURL: URL = Bundle.main.bundleURL,
+        distribution: AppDistribution = .current,
         handler: @escaping (MountedVolume) -> MountEventHandlingDisposition,
         shouldHandleDirectMount: @escaping () -> Bool,
         shouldHandleHandoff: @escaping (MountHandoffEvent) -> Bool,
         handoffAcknowledgedHandler: @escaping (MountHandoffEvent) -> Void = { _ in },
         errorHandler: @escaping (String, UInt64?) -> Void = { _, _ in }
     ) {
+        mountPrivacyPolicy = distribution.mountPrivacyPolicy
         self.handler = handler
         self.shouldHandleDirectMount = shouldHandleDirectMount
         self.shouldHandleHandoff = shouldHandleHandoff
@@ -55,25 +58,27 @@ final class MountEventObserver {
             }
         }
 
-        distributedToken = DistributedNotificationCenter.default().addObserver(
-            forName: Notification.Name(MountHandoff.notificationName),
-            object: targetApplicationPath,
-            queue: .main
-        ) { [weak self] notification in
-            guard let path = notification.userInfo?[MountHandoff.pathKey] as? String else {
-                return
-            }
-            guard
-                let targetPath = notification.userInfo?[MountHandoff.targetApplicationPathKey] as? String,
-                URL(fileURLWithPath: targetPath).standardizedFileURL.path == self?.targetApplicationPath
-            else {
-                return
-            }
-            let name = notification.userInfo?[MountHandoff.nameKey] as? String
-            let eventID = (notification.userInfo?[MountHandoff.eventIDKey] as? String)
-                .flatMap(UUID.init(uuidString:))
-            Task { @MainActor in
-                self?.handleNotification(path: path, name: name, eventID: eventID)
+        if mountPrivacyPolicy.usesDistributedNotificationHandoff {
+            distributedToken = DistributedNotificationCenter.default().addObserver(
+                forName: Notification.Name(MountHandoff.notificationName),
+                object: targetApplicationPath,
+                queue: .main
+            ) { [weak self] notification in
+                guard let path = notification.userInfo?[MountHandoff.pathKey] as? String else {
+                    return
+                }
+                guard
+                    let targetPath = notification.userInfo?[MountHandoff.targetApplicationPathKey] as? String,
+                    URL(fileURLWithPath: targetPath).standardizedFileURL.path == self?.targetApplicationPath
+                else {
+                    return
+                }
+                let name = notification.userInfo?[MountHandoff.nameKey] as? String
+                let eventID = (notification.userInfo?[MountHandoff.eventIDKey] as? String)
+                    .flatMap(UUID.init(uuidString:))
+                Task { @MainActor in
+                    self?.handleNotification(path: path, name: name, eventID: eventID)
+                }
             }
         }
 
@@ -95,7 +100,10 @@ final class MountEventObserver {
         guard shouldHandleDirectMount() else {
             return
         }
-        let volume = detector.mountedVolume(from: mountURL)
+        let volume = detector.mountedVolume(
+            from: mountURL,
+            includeCapacity: mountPrivacyPolicy.includesCapacityBeforeConsent
+        )
         guard detector.isLikelyImportVolume(volume) else {
             return
         }
@@ -186,7 +194,10 @@ final class MountEventObserver {
         event: MountHandoffEvent? = nil
     ) {
         let mountURL = URL(fileURLWithPath: path, isDirectory: true)
-        let detectedVolume = detector.mountedVolume(from: mountURL)
+        let detectedVolume = detector.mountedVolume(
+            from: mountURL,
+            includeCapacity: mountPrivacyPolicy.includesCapacityBeforeConsent
+        )
         if !MountHandoffVolumeIdentity.matchesCurrentVolume(
             expectedUUID: event?.mountedVolume?.volumeUUID,
             currentUUID: detectedVolume.volumeUUID
@@ -214,6 +225,17 @@ final class MountEventObserver {
         }
         guard detector.isLikelyImportVolume(volume) else {
             finish(claim)
+            return
+        }
+        if !mountPrivacyPolicy.probesMediaBeforeConsent {
+            switch handleImportableVolume(volume, event: event) {
+            case .accepted:
+                finish(claim)
+            case .deferred:
+                if let claim {
+                    handoffStore?.release(claim)
+                }
+            }
             return
         }
         probeForMediaThenHandle(volume, claim: claim, event: event)

@@ -117,7 +117,7 @@ For release details and public support, see:
 
 https://github.com/xcv58/sd-import/releases
 
-Support email: [i@xcv58.com](mailto:i@xcv58.com)
+Support email: [sd@jenny.media](mailto:sd@jenny.media)
 
 For privacy details, see [privacy.md](privacy.md). For security reporting, see
 [../SECURITY.md](../SECURITY.md).

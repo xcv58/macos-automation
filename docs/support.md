@@ -1,6 +1,6 @@
 # SD Import Support
 
-Support email: [i@xcv58.com](mailto:i@xcv58.com)
+Support email: [sd@jenny.media](mailto:sd@jenny.media)
 
 Public bugs and feature requests should use GitHub Issues:
 
@@ -35,6 +35,10 @@ Review the export before sharing it.
 Settings shows the current macOS background-helper state next to `Prompt when a
 card is mounted`.
 
+In the Mac App Store edition, the helper detects the mount without scanning the
+card. The main app asks whether to scan and, when needed, macOS separately asks
+you to allow folder access. Cancelling either prompt leaves the card unscanned.
+
 - `Running`: the helper is registered, matches the installed app, and has
   launched since the latest enable or repair attempt.
 - `Install required`: move SD Import into `/Applications` or
@@ -62,6 +66,13 @@ prompt without requiring a second manual launch. Mounts observed while an
 import or another prompt is active are kept in a durable queue. Card swaps that
 reuse the same `/Volumes/...` path remain separate queue entries.
 
+## Purchase And Restore
+
+The Mac App Store edition includes one successfully completed import for free.
+Previewing a card does not consume it. Use `Settings > Purchase > Restore
+Purchases` to restore the lifetime unlock for the current Apple ID. Pending,
+cancelled, unverified, refunded, or revoked transactions do not unlock imports.
+
 ## Crash Reports
 
 SD Import does not upload crash reports automatically.
@@ -72,9 +83,11 @@ If the app crashes, macOS may store a local crash report under:
 ~/Library/Logs/DiagnosticReports/
 ```
 
-Use `Diagnostics > Reveal Crash Reports` to open the folder, or
-`Diagnostics > Export Latest Crash Report` to save the newest local SD Import
-report for support.
+In the direct-download edition, use `Diagnostics > Reveal Crash Reports` to
+open the folder, or `Diagnostics > Export Latest Crash Report` to save the
+newest local SD Import report for support. The sandboxed Mac App Store edition
+does not browse the system crash-report directory; open the path manually in
+Finder if support asks for a report.
 
 Only share crash reports you have reviewed. Redact private folder names,
 filenames, card names, serial numbers, and any media metadata you do not want to

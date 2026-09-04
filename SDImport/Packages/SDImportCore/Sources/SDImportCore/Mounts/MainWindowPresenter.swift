@@ -6,15 +6,28 @@ public enum MainWindowPresenter {
     public static let windowIdentifier = NSUserInterfaceItemIdentifier("SDImport.main")
 
     public static func present() {
-        let existingWindow = NSApp.windows.first { $0.identifier == windowIdentifier }
-        MainWindowPresentationCoordinator.shared.present(
+        let application: NSApplication? = NSApp
+        present(
+            application: application,
+            coordinator: MainWindowPresentationCoordinator.shared
+        )
+    }
+
+    @discardableResult
+    static func present(
+        application: NSApplication?,
+        coordinator: MainWindowPresentationCoordinator
+    ) -> MainWindowPresentationCoordinator.PresentationResult {
+        let existingWindow = application?.windows.first { $0.identifier == windowIdentifier }
+        let result = coordinator.present(
             existingWindow: existingWindow.map { window in
                 {
                     restoreAndPresent(window)
                 }
             }
         )
-        NSApp.activate()
+        application?.activate()
+        return result
     }
 
     static func restoreAndPresent(_ window: NSWindow) {

@@ -1,0 +1,891 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		09B9D4799F8E50F87C9C12B9 /* SDImportCore in Frameworks */ = {isa = PBXBuildFile; productRef = 66AF2EADC0A0937F0DC53451 /* SDImportCore */; };
+		0BFE49BE1AF9503C20C61AB1 /* AppChrome.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18FA597122D186B25273A6E0 /* AppChrome.swift */; };
+		143075751EF59069335A301F /* AppUpdater.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54F840D44C8C199CCE34FECB /* AppUpdater.swift */; };
+		170C52B36F18D9C9A0F3D3BA /* FilePanelPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 853DEBFEFE0473D4B97D4A67 /* FilePanelPresenter.swift */; };
+		193D52D318F6A59D21620D8E /* StoreKitIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA3631418FAC3EDCC339D129 /* StoreKitIntegrationTests.swift */; };
+		2B960A60640307A657D2F6FF /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78F876CE3C14937CC69C5924 /* SettingsView.swift */; };
+		2EA9DBD15CC4DA6AEA6CAE6B /* SidebarItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2F922253DAB8E4109509710 /* SidebarItem.swift */; };
+		4A75F48049B3DC80D9F221C7 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0ED63B082771A7831CD18932 /* AppModel.swift */; };
+		528A87A1E097F50A9B5DCC3B /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1B6EBCFB14A02D50B10A3C2 /* main.swift */; };
+		54C29000506BF3652F50667B /* SDImportCore in Frameworks */ = {isa = PBXBuildFile; productRef = 6199ABE38337D7DFFDC56F07 /* SDImportCore */; };
+		56D9032B7AC0232F53B3864E /* SourceEjectionControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2E92A3118205E0209C1DBD9 /* SourceEjectionControl.swift */; };
+		633FB9F87CA39DBE13995741 /* HistoryDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21CAFE3AE59B1B2CD2D5F8D1 /* HistoryDetailView.swift */; };
+		75B2ADA4D3D35975E6419B18 /* StoreKitTestBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7B413398B07F91A1E580ED5 /* StoreKitTestBridge.swift */; };
+		761005546E9E4D61EFDD54F2 /* DiagnosticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 479A116D06B74E25AC5DA1D7 /* DiagnosticsView.swift */; };
+		8B5C8F5B9EE4966B3EA89611 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3400B49B9BBC5C0BDCDFE715 /* RootView.swift */; };
+		8C5C6DA9BC73546AEF598F55 /* ImportReportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0A58CEF8D0ADB0A77F4257B /* ImportReportView.swift */; };
+		912C6FE03C427577680B4CE0 /* SDImport.storekit in Resources */ = {isa = PBXBuildFile; fileRef = FDF31B3C5A8097ECE619C8D6 /* SDImport.storekit */; };
+		A2721566CD4CCDA59AD96AE7 /* ImportThumbnailProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3273F6FBED66F5FF362F3181 /* ImportThumbnailProvider.swift */; };
+		A471B2057FA3EFD527071691 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 94EA7C1176A33A51E1F6E794 /* PrivacyInfo.xcprivacy */; };
+		A92B588D0BEC9EE96A5C10AF /* PurchaseView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57774FA23C8BA932A890C123 /* PurchaseView.swift */; };
+		AF12F6D73B9F70BB70174A73 /* SDImportApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBDEEFC2DEC320963CE4060C /* SDImportApp.swift */; };
+		B0C15CFDF8BA2731F9A13583 /* ImportPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A39E19A562AB20862F5BA056 /* ImportPreviewView.swift */; };
+		C252A623A339738FF89359F3 /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A9F7E362FAEB383953CB70D /* HistoryView.swift */; };
+		C2825563232CE0FF36CF4111 /* LoginItemController.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBD0981EE84CC3E67FBEB387 /* LoginItemController.swift */; };
+		C2CF7A55EDD8D7EEC0F56D1B /* ImportResultView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56A19AA103DBA8ABB820E77F /* ImportResultView.swift */; };
+		C79B2675B9259E5A081F9251 /* SDImportCommerce in Frameworks */ = {isa = PBXBuildFile; productRef = 4E41797EAEF5D42B612B14E9 /* SDImportCommerce */; };
+		CD0C9BFD2685E7B1836232E3 /* ImportQuickLookController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3661EC835F69C0AA6348F071 /* ImportQuickLookController.swift */; };
+		D01D2EEEC2605711CDA624D6 /* MountEventObserver.swift in Sources */ = {isa = PBXBuildFile; fileRef = A085ABB2E24A545D51041B5D /* MountEventObserver.swift */; };
+		D29A4EA512E4486383CF2A0B /* ShootNameField.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEE2CE479E30F371191CA829 /* ShootNameField.swift */; };
+		D53FA80EB6217FD539806306 /* MountPromptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D423E0A162E5B7DE5D9C914A /* MountPromptView.swift */; };
+		D7C094106F46261CBAC7E401 /* ImportProgressPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C10174E33B9AB8BB08B8EB0 /* ImportProgressPanel.swift */; };
+		D7EC8C1248DDB03AB51A8A09 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A4380B743818B084CBF5227 /* AppDelegate.swift */; };
+		E0AC45753E31FBB6D8876D3B /* OnboardingFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44210DA9F5A19C1A6FE132F0 /* OnboardingFlowView.swift */; };
+		E8CE3C2FB50BD01E339F219E /* ScanSummaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB298AD0B746836DCB6090A8 /* ScanSummaryView.swift */; };
+		F8A9BE39D29506F1B3239257 /* HistoryJobPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BD7E9B4708616AFC31577B3 /* HistoryJobPresentation.swift */; };
+		F9FEBCD70870D72243896703 /* ManualImportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D8C5317105D816BEC772267 /* ManualImportView.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		7CECB69637EB3DE8F0FB18E5 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 97292A0E02E3699C24F6D52E /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = D73854480BE34E4A73182CE5;
+			remoteInfo = SDImportForMac;
+		};
+		B97C8EFF1ED95BECCD434A6B /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 97292A0E02E3699C24F6D52E /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = FA810620E11FA4822661411A;
+			remoteInfo = SDImportAgent;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		0ED63B082771A7831CD18932 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
+		18FA597122D186B25273A6E0 /* AppChrome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppChrome.swift; sourceTree = "<group>"; };
+		21CAFE3AE59B1B2CD2D5F8D1 /* HistoryDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryDetailView.swift; sourceTree = "<group>"; };
+		3273F6FBED66F5FF362F3181 /* ImportThumbnailProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportThumbnailProvider.swift; sourceTree = "<group>"; };
+		32CC938A0A3F7A2EEFED8736 /* SDImportAgent.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SDImportAgent.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		3400B49B9BBC5C0BDCDFE715 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		3661EC835F69C0AA6348F071 /* ImportQuickLookController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportQuickLookController.swift; sourceTree = "<group>"; };
+		3A4380B743818B084CBF5227 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		3BD7E9B4708616AFC31577B3 /* HistoryJobPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryJobPresentation.swift; sourceTree = "<group>"; };
+		44210DA9F5A19C1A6FE132F0 /* OnboardingFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingFlowView.swift; sourceTree = "<group>"; };
+		479A116D06B74E25AC5DA1D7 /* DiagnosticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticsView.swift; sourceTree = "<group>"; };
+		54F840D44C8C199CCE34FECB /* AppUpdater.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdater.swift; sourceTree = "<group>"; };
+		56A19AA103DBA8ABB820E77F /* ImportResultView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportResultView.swift; sourceTree = "<group>"; };
+		57774FA23C8BA932A890C123 /* PurchaseView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PurchaseView.swift; sourceTree = "<group>"; };
+		6A12F26D497A12B15B37499B /* SDImportCore */ = {isa = PBXFileReference; lastKnownFileType = folder; name = SDImportCore; path = Packages/SDImportCore; sourceTree = SOURCE_ROOT; };
+		6A9F7E362FAEB383953CB70D /* HistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryView.swift; sourceTree = "<group>"; };
+		78F876CE3C14937CC69C5924 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		7D8C5317105D816BEC772267 /* ManualImportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManualImportView.swift; sourceTree = "<group>"; };
+		853DEBFEFE0473D4B97D4A67 /* FilePanelPresenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilePanelPresenter.swift; sourceTree = "<group>"; };
+		94EA7C1176A33A51E1F6E794 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		9C10174E33B9AB8BB08B8EB0 /* ImportProgressPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportProgressPanel.swift; sourceTree = "<group>"; };
+		A085ABB2E24A545D51041B5D /* MountEventObserver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MountEventObserver.swift; sourceTree = "<group>"; };
+		A39E19A562AB20862F5BA056 /* ImportPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportPreviewView.swift; sourceTree = "<group>"; };
+		A7B413398B07F91A1E580ED5 /* StoreKitTestBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreKitTestBridge.swift; sourceTree = "<group>"; };
+		AEE2CE479E30F371191CA829 /* ShootNameField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShootNameField.swift; sourceTree = "<group>"; };
+		BA3631418FAC3EDCC339D129 /* StoreKitIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreKitIntegrationTests.swift; sourceTree = "<group>"; };
+		BBDEEFC2DEC320963CE4060C /* SDImportApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SDImportApp.swift; sourceTree = "<group>"; };
+		CB28BD3E47D4FDF62C8EADED /* SDImportStoreKitTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SDImportStoreKitTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		CE3D7730AE01791A8786AF66 /* SD Import for Mac.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "SD Import for Mac.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		D423E0A162E5B7DE5D9C914A /* MountPromptView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MountPromptView.swift; sourceTree = "<group>"; };
+		E0A58CEF8D0ADB0A77F4257B /* ImportReportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportReportView.swift; sourceTree = "<group>"; };
+		EB298AD0B746836DCB6090A8 /* ScanSummaryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanSummaryView.swift; sourceTree = "<group>"; };
+		EBD0981EE84CC3E67FBEB387 /* LoginItemController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginItemController.swift; sourceTree = "<group>"; };
+		F1B6EBCFB14A02D50B10A3C2 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		F2E92A3118205E0209C1DBD9 /* SourceEjectionControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourceEjectionControl.swift; sourceTree = "<group>"; };
+		F2F922253DAB8E4109509710 /* SidebarItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarItem.swift; sourceTree = "<group>"; };
+		FDF31B3C5A8097ECE619C8D6 /* SDImport.storekit */ = {isa = PBXFileReference; path = SDImport.storekit; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		772ADB207D78EA1C7D07D5A6 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				54C29000506BF3652F50667B /* SDImportCore in Frameworks */,
+				C79B2675B9259E5A081F9251 /* SDImportCommerce in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B76ECF18721D67E25FC7B64D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				09B9D4799F8E50F87C9C12B9 /* SDImportCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		0076EEDE0B7C6394A8DA955B /* Reports */ = {
+			isa = PBXGroup;
+			children = (
+				E0A58CEF8D0ADB0A77F4257B /* ImportReportView.swift */,
+			);
+			path = Reports;
+			sourceTree = "<group>";
+		};
+		0B8A916AF17BEC0B40B9C464 /* Commerce */ = {
+			isa = PBXGroup;
+			children = (
+				57774FA23C8BA932A890C123 /* PurchaseView.swift */,
+			);
+			path = Commerce;
+			sourceTree = "<group>";
+		};
+		14359EB15B66B6E2D052ABCE /* MacAppStore */ = {
+			isa = PBXGroup;
+			children = (
+				94EA7C1176A33A51E1F6E794 /* PrivacyInfo.xcprivacy */,
+				FDF31B3C5A8097ECE619C8D6 /* SDImport.storekit */,
+			);
+			name = MacAppStore;
+			path = Packaging/MacAppStore;
+			sourceTree = "<group>";
+		};
+		2DDD843F8BED14DFD4B20832 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				CE3D7730AE01791A8786AF66 /* SD Import for Mac.app */,
+				32CC938A0A3F7A2EEFED8736 /* SDImportAgent.app */,
+				CB28BD3E47D4FDF62C8EADED /* SDImportStoreKitTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		338D5198AC2CC867AF5E7E0F /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				F2F922253DAB8E4109509710 /* SidebarItem.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		34130B9DFD5F8BE01297C94B /* App */ = {
+			isa = PBXGroup;
+			children = (
+				3A4380B743818B084CBF5227 /* AppDelegate.swift */,
+				BBDEEFC2DEC320963CE4060C /* SDImportApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		497D563D8CCBDF8070EEA38F /* Import */ = {
+			isa = PBXGroup;
+			children = (
+				A39E19A562AB20862F5BA056 /* ImportPreviewView.swift */,
+				9C10174E33B9AB8BB08B8EB0 /* ImportProgressPanel.swift */,
+				56A19AA103DBA8ABB820E77F /* ImportResultView.swift */,
+				7D8C5317105D816BEC772267 /* ManualImportView.swift */,
+				D423E0A162E5B7DE5D9C914A /* MountPromptView.swift */,
+				EB298AD0B746836DCB6090A8 /* ScanSummaryView.swift */,
+				AEE2CE479E30F371191CA829 /* ShootNameField.swift */,
+				F2E92A3118205E0209C1DBD9 /* SourceEjectionControl.swift */,
+			);
+			path = Import;
+			sourceTree = "<group>";
+		};
+		5682F0100CE2B8B0C57B3CC6 /* Stores */ = {
+			isa = PBXGroup;
+			children = (
+				0ED63B082771A7831CD18932 /* AppModel.swift */,
+			);
+			path = Stores;
+			sourceTree = "<group>";
+		};
+		7545C72902F06A8167DCE3CF /* SDImportApp */ = {
+			isa = PBXGroup;
+			children = (
+				34130B9DFD5F8BE01297C94B /* App */,
+				338D5198AC2CC867AF5E7E0F /* Models */,
+				5682F0100CE2B8B0C57B3CC6 /* Stores */,
+				AABA73F68C5DC4AA187FD1B8 /* Support */,
+				D3B82E68D9C01E4B4968D07B /* Views */,
+			);
+			name = SDImportApp;
+			path = Packages/SDImportCore/Sources/SDImportApp;
+			sourceTree = "<group>";
+		};
+		8409CC109A975C1404E5A231 /* History */ = {
+			isa = PBXGroup;
+			children = (
+				21CAFE3AE59B1B2CD2D5F8D1 /* HistoryDetailView.swift */,
+				3BD7E9B4708616AFC31577B3 /* HistoryJobPresentation.swift */,
+				6A9F7E362FAEB383953CB70D /* HistoryView.swift */,
+			);
+			path = History;
+			sourceTree = "<group>";
+		};
+		8F889644A8A706CF7BCB9FBA /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				6A12F26D497A12B15B37499B /* SDImportCore */,
+			);
+			path = Packages;
+			sourceTree = "<group>";
+		};
+		A698EBA0FC03A4D16936A862 /* Onboarding */ = {
+			isa = PBXGroup;
+			children = (
+				44210DA9F5A19C1A6FE132F0 /* OnboardingFlowView.swift */,
+			);
+			path = Onboarding;
+			sourceTree = "<group>";
+		};
+		AABA73F68C5DC4AA187FD1B8 /* Support */ = {
+			isa = PBXGroup;
+			children = (
+				54F840D44C8C199CCE34FECB /* AppUpdater.swift */,
+				853DEBFEFE0473D4B97D4A67 /* FilePanelPresenter.swift */,
+				3661EC835F69C0AA6348F071 /* ImportQuickLookController.swift */,
+				3273F6FBED66F5FF362F3181 /* ImportThumbnailProvider.swift */,
+				EBD0981EE84CC3E67FBEB387 /* LoginItemController.swift */,
+				A085ABB2E24A545D51041B5D /* MountEventObserver.swift */,
+				A7B413398B07F91A1E580ED5 /* StoreKitTestBridge.swift */,
+			);
+			path = Support;
+			sourceTree = "<group>";
+		};
+		B7904D60F237723F8A0882CD = {
+			isa = PBXGroup;
+			children = (
+				14359EB15B66B6E2D052ABCE /* MacAppStore */,
+				8F889644A8A706CF7BCB9FBA /* Packages */,
+				E102181F4DBA24E8D8E9D643 /* SDImportAgent */,
+				7545C72902F06A8167DCE3CF /* SDImportApp */,
+				C4E72AA9D505724D2276A7D4 /* SDImportStoreKitTests */,
+				2DDD843F8BED14DFD4B20832 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		C4E72AA9D505724D2276A7D4 /* SDImportStoreKitTests */ = {
+			isa = PBXGroup;
+			children = (
+				BA3631418FAC3EDCC339D129 /* StoreKitIntegrationTests.swift */,
+			);
+			name = SDImportStoreKitTests;
+			path = Packages/SDImportCore/Tests/SDImportStoreKitTests;
+			sourceTree = "<group>";
+		};
+		D3B82E68D9C01E4B4968D07B /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				18FA597122D186B25273A6E0 /* AppChrome.swift */,
+				479A116D06B74E25AC5DA1D7 /* DiagnosticsView.swift */,
+				3400B49B9BBC5C0BDCDFE715 /* RootView.swift */,
+				0B8A916AF17BEC0B40B9C464 /* Commerce */,
+				8409CC109A975C1404E5A231 /* History */,
+				497D563D8CCBDF8070EEA38F /* Import */,
+				A698EBA0FC03A4D16936A862 /* Onboarding */,
+				0076EEDE0B7C6394A8DA955B /* Reports */,
+				FA2AE48BACCB5011A3A195A7 /* Settings */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		E102181F4DBA24E8D8E9D643 /* SDImportAgent */ = {
+			isa = PBXGroup;
+			children = (
+				F1B6EBCFB14A02D50B10A3C2 /* main.swift */,
+			);
+			name = SDImportAgent;
+			path = Packages/SDImportCore/Sources/SDImportAgent;
+			sourceTree = "<group>";
+		};
+		FA2AE48BACCB5011A3A195A7 /* Settings */ = {
+			isa = PBXGroup;
+			children = (
+				78F876CE3C14937CC69C5924 /* SettingsView.swift */,
+			);
+			path = Settings;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		723E423A287CC00C87340A9C /* SDImportStoreKitTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 8F6C37DFB3E53E1D48068A87 /* Build configuration list for PBXNativeTarget "SDImportStoreKitTests" */;
+			buildPhases = (
+				B9DAC3F7F777B0A84EBEA839 /* Sources */,
+				6E3F251E20FE0ED2573B5E29 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				31E8BC26DC209DC3B7A94B45 /* PBXTargetDependency */,
+			);
+			name = SDImportStoreKitTests;
+			packageProductDependencies = (
+			);
+			productName = SDImportStoreKitTests;
+			productReference = CB28BD3E47D4FDF62C8EADED /* SDImportStoreKitTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		D73854480BE34E4A73182CE5 /* SDImportForMac */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A9F49901E5AFB52B8ED7AD48 /* Build configuration list for PBXNativeTarget "SDImportForMac" */;
+			buildPhases = (
+				E6E0B9C215D2127235D570F2 /* Sources */,
+				1DCE2241445CC6AFC03ABF0F /* Resources */,
+				772ADB207D78EA1C7D07D5A6 /* Frameworks */,
+				3EBD369E1DE2D44B2DC9DD5C /* Generate App Icon */,
+				54A6140472FF38CCA9194FEB /* Embed Background Helper */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				30705F06BE28F85F15BAEB01 /* PBXTargetDependency */,
+			);
+			name = SDImportForMac;
+			packageProductDependencies = (
+				6199ABE38337D7DFFDC56F07 /* SDImportCore */,
+				4E41797EAEF5D42B612B14E9 /* SDImportCommerce */,
+			);
+			productName = SDImportForMac;
+			productReference = CE3D7730AE01791A8786AF66 /* SD Import for Mac.app */;
+			productType = "com.apple.product-type.application";
+		};
+		FA810620E11FA4822661411A /* SDImportAgent */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = FB43FCC04D446FC115292AF5 /* Build configuration list for PBXNativeTarget "SDImportAgent" */;
+			buildPhases = (
+				FFA1680D431687DA4DC9AE39 /* Sources */,
+				B76ECF18721D67E25FC7B64D /* Frameworks */,
+				F90978150516E9D78FB6394F /* Embed Privacy Manifest */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = SDImportAgent;
+			packageProductDependencies = (
+				66AF2EADC0A0937F0DC53451 /* SDImportCore */,
+			);
+			productName = SDImportAgent;
+			productReference = 32CC938A0A3F7A2EEFED8736 /* SDImportAgent.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		97292A0E02E3699C24F6D52E /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					723E423A287CC00C87340A9C = {
+						DevelopmentTeam = 5736QK4NZX;
+					};
+					D73854480BE34E4A73182CE5 = {
+						DevelopmentTeam = 5736QK4NZX;
+						ProvisioningStyle = Manual;
+					};
+					FA810620E11FA4822661411A = {
+						DevelopmentTeam = 5736QK4NZX;
+						ProvisioningStyle = Manual;
+					};
+				};
+			};
+			buildConfigurationList = F3BE0DC2A7B791CC769C212F /* Build configuration list for PBXProject "SDImportMacAppStore" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = B7904D60F237723F8A0882CD;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				260E72BA4428E5544F44D942 /* XCLocalSwiftPackageReference "Packages/SDImportCore" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 2DDD843F8BED14DFD4B20832 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				FA810620E11FA4822661411A /* SDImportAgent */,
+				D73854480BE34E4A73182CE5 /* SDImportForMac */,
+				723E423A287CC00C87340A9C /* SDImportStoreKitTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		1DCE2241445CC6AFC03ABF0F /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A471B2057FA3EFD527071691 /* PrivacyInfo.xcprivacy in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		6E3F251E20FE0ED2573B5E29 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				912C6FE03C427577680B4CE0 /* SDImport.storekit in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		3EBD369E1DE2D44B2DC9DD5C /* Generate App Icon */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/../script/generate_icon.swift",
+			);
+			name = "Generate App Icon";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/SDImport.icns",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -euo pipefail\noutput=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/SDImport.icns\"\nCLANG_MODULE_CACHE_PATH=\"${PROJECT_TEMP_DIR}/IconModuleCache\" \\\n  xcrun swift \"${SRCROOT}/../script/generate_icon.swift\" \"$output\"\n";
+		};
+		54A6140472FF38CCA9194FEB /* Embed Background Helper */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(BUILT_PRODUCTS_DIR)/SDImportAgent.app",
+			);
+			name = "Embed Background Helper";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Library/LoginItems/SDImportAgent.app",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -euo pipefail\nsource_bundle=\"${BUILT_PRODUCTS_DIR}/SDImportAgent.app\"\ndestination_dir=\"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/Library/LoginItems\"\ndestination_bundle=\"${destination_dir}/SDImportAgent.app\"\ntest -d \"$source_bundle\"\nrm -rf \"$destination_bundle\"\nmkdir -p \"$destination_dir\"\n/usr/bin/ditto \"$source_bundle\" \"$destination_bundle\"\n";
+		};
+		F90978150516E9D78FB6394F /* Embed Privacy Manifest */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/Packaging/MacAppStore/SDImportAgentPrivacyInfo.xcprivacy",
+			);
+			name = "Embed Privacy Manifest";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/PrivacyInfo.xcprivacy",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -euo pipefail\ndestination=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/PrivacyInfo.xcprivacy\"\nmkdir -p \"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}\"\ncp \"${SRCROOT}/Packaging/MacAppStore/SDImportAgentPrivacyInfo.xcprivacy\" \"$destination\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		B9DAC3F7F777B0A84EBEA839 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				193D52D318F6A59D21620D8E /* StoreKitIntegrationTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E6E0B9C215D2127235D570F2 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0BFE49BE1AF9503C20C61AB1 /* AppChrome.swift in Sources */,
+				D7EC8C1248DDB03AB51A8A09 /* AppDelegate.swift in Sources */,
+				4A75F48049B3DC80D9F221C7 /* AppModel.swift in Sources */,
+				143075751EF59069335A301F /* AppUpdater.swift in Sources */,
+				761005546E9E4D61EFDD54F2 /* DiagnosticsView.swift in Sources */,
+				170C52B36F18D9C9A0F3D3BA /* FilePanelPresenter.swift in Sources */,
+				633FB9F87CA39DBE13995741 /* HistoryDetailView.swift in Sources */,
+				F8A9BE39D29506F1B3239257 /* HistoryJobPresentation.swift in Sources */,
+				C252A623A339738FF89359F3 /* HistoryView.swift in Sources */,
+				B0C15CFDF8BA2731F9A13583 /* ImportPreviewView.swift in Sources */,
+				D7C094106F46261CBAC7E401 /* ImportProgressPanel.swift in Sources */,
+				CD0C9BFD2685E7B1836232E3 /* ImportQuickLookController.swift in Sources */,
+				8C5C6DA9BC73546AEF598F55 /* ImportReportView.swift in Sources */,
+				C2CF7A55EDD8D7EEC0F56D1B /* ImportResultView.swift in Sources */,
+				A2721566CD4CCDA59AD96AE7 /* ImportThumbnailProvider.swift in Sources */,
+				C2825563232CE0FF36CF4111 /* LoginItemController.swift in Sources */,
+				F9FEBCD70870D72243896703 /* ManualImportView.swift in Sources */,
+				D01D2EEEC2605711CDA624D6 /* MountEventObserver.swift in Sources */,
+				D53FA80EB6217FD539806306 /* MountPromptView.swift in Sources */,
+				E0AC45753E31FBB6D8876D3B /* OnboardingFlowView.swift in Sources */,
+				A92B588D0BEC9EE96A5C10AF /* PurchaseView.swift in Sources */,
+				8B5C8F5B9EE4966B3EA89611 /* RootView.swift in Sources */,
+				AF12F6D73B9F70BB70174A73 /* SDImportApp.swift in Sources */,
+				E8CE3C2FB50BD01E339F219E /* ScanSummaryView.swift in Sources */,
+				2B960A60640307A657D2F6FF /* SettingsView.swift in Sources */,
+				D29A4EA512E4486383CF2A0B /* ShootNameField.swift in Sources */,
+				2EA9DBD15CC4DA6AEA6CAE6B /* SidebarItem.swift in Sources */,
+				56D9032B7AC0232F53B3864E /* SourceEjectionControl.swift in Sources */,
+				75B2ADA4D3D35975E6419B18 /* StoreKitTestBridge.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		FFA1680D431687DA4DC9AE39 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				528A87A1E097F50A9B5DCC3B /* main.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		30705F06BE28F85F15BAEB01 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = FA810620E11FA4822661411A /* SDImportAgent */;
+			targetProxy = B97C8EFF1ED95BECCD434A6B /* PBXContainerItemProxy */;
+		};
+		31E8BC26DC209DC3B7A94B45 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = D73854480BE34E4A73182CE5 /* SDImportForMac */;
+			targetProxy = 7CECB69637EB3DE8F0FB18E5 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		218723AB2B25A3CDB4B9F422 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Packaging/MacAppStore/SDImportAgent.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 4;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "Packaging/MacAppStore/SDImportAgent-Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				OTHER_SWIFT_FLAGS = "$(inherited) -parse-as-library";
+				PRODUCT_BUNDLE_IDENTIFIER = media.jenny.sdimport.agent;
+				PRODUCT_NAME = SDImportAgent;
+				PROVISIONING_PROFILE_SPECIFIER = "SD Import Agent Development";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+			};
+			name = Debug;
+		};
+		47516607572E231B32279834 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Packaging/MacAppStore/SDImportAgent.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Distribution";
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 4;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "Packaging/MacAppStore/SDImportAgent-Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				OTHER_SWIFT_FLAGS = "$(inherited) -parse-as-library";
+				PRODUCT_BUNDLE_IDENTIFIER = media.jenny.sdimport.agent;
+				PRODUCT_NAME = SDImportAgent;
+				PROVISIONING_PROFILE_SPECIFIER = "SD Import Agent App Store";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+			};
+			name = Release;
+		};
+		771E651B2B3E20792132F55D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "media.jenny.sdimport.storekit-tests";
+				SDKROOT = macosx;
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SD Import for Mac.app/Contents/MacOS/SD Import for Mac";
+			};
+			name = Debug;
+		};
+		A700F8743EE4C0B0DD3DB34F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Packaging/MacAppStore/SDImport.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Distribution";
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 4;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "Packaging/MacAppStore/SDImport-Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = media.jenny.sdimport;
+				PRODUCT_MODULE_NAME = SDImportForMac;
+				PRODUCT_NAME = "SD Import for Mac";
+				PROVISIONING_PROFILE_SPECIFIER = "SD Import for Mac App Store";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) SDIMPORT_MAC_APP_STORE";
+			};
+			name = Release;
+		};
+		AD2B49478B32CC19BC57D62C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Packaging/MacAppStore/SDImport.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 4;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "Packaging/MacAppStore/SDImport-Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = media.jenny.sdimport;
+				PRODUCT_MODULE_NAME = SDImportForMac;
+				PRODUCT_NAME = "SD Import for Mac";
+				PROVISIONING_PROFILE_SPECIFIER = "SD Import for Mac Development";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) SDIMPORT_MAC_APP_STORE";
+			};
+			name = Debug;
+		};
+		B64A9129955687B47F4DCFAD /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = 5736QK4NZX;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		E523E5B74A0F9803224AD808 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "media.jenny.sdimport.storekit-tests";
+				SDKROOT = macosx;
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SD Import for Mac.app/Contents/MacOS/SD Import for Mac";
+			};
+			name = Release;
+		};
+		F56C05A19CBFF7D9EDEA6D56 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = 5736QK4NZX;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		8F6C37DFB3E53E1D48068A87 /* Build configuration list for PBXNativeTarget "SDImportStoreKitTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				771E651B2B3E20792132F55D /* Debug */,
+				E523E5B74A0F9803224AD808 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		A9F49901E5AFB52B8ED7AD48 /* Build configuration list for PBXNativeTarget "SDImportForMac" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AD2B49478B32CC19BC57D62C /* Debug */,
+				A700F8743EE4C0B0DD3DB34F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		F3BE0DC2A7B791CC769C212F /* Build configuration list for PBXProject "SDImportMacAppStore" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B64A9129955687B47F4DCFAD /* Debug */,
+				F56C05A19CBFF7D9EDEA6D56 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		FB43FCC04D446FC115292AF5 /* Build configuration list for PBXNativeTarget "SDImportAgent" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				218723AB2B25A3CDB4B9F422 /* Debug */,
+				47516607572E231B32279834 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		260E72BA4428E5544F44D942 /* XCLocalSwiftPackageReference "Packages/SDImportCore" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/SDImportCore;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		4E41797EAEF5D42B612B14E9 /* SDImportCommerce */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = SDImportCommerce;
+		};
+		6199ABE38337D7DFFDC56F07 /* SDImportCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = SDImportCore;
+		};
+		66AF2EADC0A0937F0DC53451 /* SDImportCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = SDImportCore;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 97292A0E02E3699C24F6D52E /* Project object */;
+}

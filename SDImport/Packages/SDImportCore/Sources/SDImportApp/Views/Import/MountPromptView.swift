@@ -30,13 +30,15 @@ struct MountPromptView: View {
 
             HStack {
                 Spacer()
-                Button("Skip") {
+                Button(skipButtonTitle) {
                     skipAction()
                 }
-                Button("Scan \(volume.name)") {
+                .accessibilityIdentifier("import.mount-prompt.decline")
+                Button(scanButtonTitle) {
                     continueAction()
                 }
                 .keyboardShortcut(.defaultAction)
+                .accessibilityIdentifier("import.mount-prompt.allow")
             }
         }
         .padding(22)
@@ -44,10 +46,25 @@ struct MountPromptView: View {
     }
 
     private var promptMessage: String {
+        if AppDistribution.current == .macAppStore {
+            if deviceGroup.isMultiVolume {
+                let names = ListFormatter.localizedString(byJoining: deviceGroup.volumes.map(\.name))
+                return "SD Import detected \(deviceGroup.displayName), with \(deviceGroup.volumes.count) storage volumes: \(names). It has not scanned their contents. Allow a scan of \(volume.name)?"
+            }
+            return "SD Import detected this removable volume but has not scanned its contents. Allow a scan now to preview what would be copied?"
+        }
         if deviceGroup.isMultiVolume {
             let names = ListFormatter.localizedString(byJoining: deviceGroup.volumes.map(\.name))
             return "\(deviceGroup.displayName) exposes \(deviceGroup.volumes.count) storage volumes: \(names). Scan \(volume.name) now; the source menu keeps all volumes available."
         }
         return "SD Import found supported media on this volume. Scan it now to preview what will be copied."
+    }
+
+    private var skipButtonTitle: String {
+        AppDistribution.current == .macAppStore ? "Don't Scan" : "Skip"
+    }
+
+    private var scanButtonTitle: String {
+        AppDistribution.current == .macAppStore ? "Allow Scan" : "Scan \(volume.name)"
     }
 }

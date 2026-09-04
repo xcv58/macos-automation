@@ -1,0 +1,439 @@
+# Mac App Store Release Track
+
+This repository supports two macOS editions from the same Swift sources:
+
+| Concern | Direct download | Mac App Store |
+| --- | --- | --- |
+| App identifier | `com.xcv58.SDImport` | `media.jenny.sdimport` |
+| Helper identifier | `com.xcv58.SDImport.Agent` | `media.jenny.sdimport.agent` |
+| Shared container | Native app support directory | `group.media.jenny.sdimport` |
+| Updates | Sparkle | App Store |
+| Access | Unlimited | One completed import free, then lifetime IAP |
+| Source access | Normal filesystem access | User-approved security-scoped access |
+| Source ejection | Available | Available after source authorization |
+
+The App Store lifetime product is the non-consumable
+`media.jenny.sdimport.unlimited`. Keep these identifiers stable after the first
+release; changing one creates a different app, helper, group, or purchase.
+
+> Release gate passed (2026-09-04): TestFlight Build 5 contains the re-entrant
+> delivery fix. Two physical `Untitled` reinsertion cycles woke the exact
+> `/Applications` build, presented the no-scan consent sheet, and completed
+> without the Build 4 Swift exclusivity crash. The second cycle continued
+> through a verified 996.3 MB import, Nothing New rescan, and safe eject.
+
+## Source And Project Layout
+
+- `SDImport/Packages/SDImportCore` remains the shared source of truth.
+- `SDImport/project.yml` is the canonical App Store XcodeGen specification.
+- `SDImport/SDImportMacAppStore.xcodeproj` is checked in so an archive does not
+  require XcodeGen on the release Mac.
+- `SDImport/Packaging/MacAppStore` owns App Store plists, entitlements, privacy
+  manifests, and the local StoreKit configuration.
+- `script/build_and_run.sh` owns only the direct-download staging path.
+- `script/build_app_store.sh` builds the App Store staging bundle from the same
+  Xcode project used for archives, preventing a second packaging definition
+  from drifting away from the submitted product.
+- `script/verify_app_store_bundle.sh` fails closed on identifier, sandbox,
+  helper-placement, privacy-manifest, StoreKit, signature, or Sparkle drift.
+- Debug configurations use manual Apple Development signing with
+  `SD Import for Mac Development` and `SD Import Agent Development`. Release
+  configurations use manual Apple Distribution signing with `SD Import for Mac
+  App Store` and `SD Import Agent App Store`. Both configurations therefore
+  fail instead of silently falling back to wildcard profiles.
+
+Regenerate the checked-in Xcode project after changing `project.yml`:
+
+```bash
+cd SDImport
+xcodegen -s project.yml
+```
+
+The post-generation hook adds the StoreKit configuration to the scheme's test
+action. Do not edit the generated project by hand.
+
+## Compatibility Audit
+
+The App Store edition uses the same core and UI with the distribution policy as
+the capability boundary. The current audit is:
+
+| Area | App Store behavior | Evidence or remaining gate |
+| --- | --- | --- |
+| Detection | `NSWorkspace.didMountNotification` and volume metadata identify a removable mount. The MAS policy omits capacity and media probing before consent. | Policy, helper, foreground observer, mailbox tests, and physical insertion pass. |
+| Helper | `SMAppService` runs the embedded sandboxed login item and an App Group mailbox carries occurrence-identified mount events. | Structural and deterministic tests pass. Both exact development profiles are installed, the login item is explicitly allowed, and signed synthetic plus physical handoffs pass. |
+| Bookmarks | Source and destination access comes only from user-selected read/write security scopes. Fresh bookmarks restore across relaunch; stale bookmarks are rejected until a new selection. | Synthetic signed import/relaunch passed; revoked and stale repair UI remains a clean-account gate. |
+| `/Volumes` assumptions | `/Volumes` is only a mount-root discovery/default placeholder and a verified ejection-target boundary. It is not treated as App Store content authorization. | Source enumeration is downstream of `ensureSourceAccessForScan`; the MAS archive has no filesystem exception entitlement. |
+| Ejection | Offered only for a selected, verified removable source after user authorization. The MAS edition reuses the existing `NSWorkspace` path and the same conservative identity, destination-device, busy-volume, and error checks as the direct edition. | Passed 2026-08-31 with an exact signed sandboxed MAS Debug build and a physical removable Secure Digital card. Controls appeared before scan, after scan, and on the successful receipt; the receipt action unmounted the card and reported it safe to remove. No additional entitlement was added. |
+| Diagnostics | App-owned redacted diagnostics remain available. Browsing system crash-report directories is not offered in the MAS edition. | Edition policy and diagnostics redaction tests pass. |
+| Quick Look | Thumbnails and previews use URLs below the already authorized source while `AppModel` retains the matching security-scope object. | No additional entitlement or subprocess is used; confirm previewing from a physical card in final QA. |
+| Legacy importer | Unsandboxed legacy-state discovery runs only in the direct edition. | Central distribution policy and tests pass. |
+| Portable receipts | The optional ledger uses the source's user-selected read/write scope. Read-only or locking failures produce warnings and do not block normal local history/import behavior. | Ledger safety/concurrency tests pass; confirm a read-only physical card in final QA. |
+| Subprocesses | The shipped Swift app/helper launch no command-line subprocesses. Process use is confined to repository tooling. | Source audit passes. |
+| Privileged operations | The MAS app/helper contain no privilege escalation or temporary exception entitlement. Source ejection uses the public `NSWorkspace` API only after the user authorizes the selected source. | Entitlement verification and exact signed physical MAS ejection passed without a temporary exception. |
+| Updates | Sparkle remains a direct-edition dependency and is absent from the MAS app target and archive. | Direct packaging and MAS archive verifiers pass. |
+
+## Local Verification
+
+Run the shared tests from `SDImport/Packages/SDImportCore`:
+
+```bash
+DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer swift test
+```
+
+Run the signed, app-hosted StoreKit tests from `SDImport`:
+
+```bash
+DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer \
+xcodebuild test \
+  -project SDImportMacAppStore.xcodeproj \
+  -scheme SDImportForMac \
+  -destination 'platform=macOS,arch=arm64' \
+  -only-testing:SDImportStoreKitTests
+```
+
+The StoreKit suite covers the exact product metadata, successful purchase,
+refund and revocation, restore, Ask to Buy pending state, and failed
+verification using the local Xcode StoreKit configuration. The deterministic
+core policy tests separately cover the free allowance and cancellation. These
+tests validate commerce behavior; they are not evidence of valid production
+provisioning or a working sandbox container. The provisioned archive verifier
+and manual QA matrix are separate release gates.
+
+The core suite also locks down the edition boundary: exact identifiers, the
+pre-consent mount privacy policy, App Group mailbox location and fail-closed
+behavior, balanced security-scope start/stop lifetime, and direct-edition
+capabilities. It also proves that the App Store edition rejects stale bookmarks
+until the user selects the folder again, while the direct edition preserves its
+existing stale-bookmark refresh behavior.
+
+Build and audit a local App Store-shaped bundle from the repository root:
+
+```bash
+BUILD_CONFIGURATION=release APP_VERSION=1.0 APP_BUILD=1 \
+DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer \
+./script/build_app_store.sh build
+```
+
+Create the actual Xcode archive only after the exact App IDs, App Group, signing
+certificate, and provisioning profiles exist:
+
+```bash
+DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer \
+xcodebuild archive \
+  -project SDImportMacAppStore.xcodeproj \
+  -scheme SDImportForMac \
+  -configuration Release \
+  -destination 'generic/platform=macOS' \
+  -archivePath /tmp/SDImportMacAppStore.xcarchive
+
+REQUIRE_PROVISIONED_SIGNATURE=1 ./script/verify_app_store_bundle.sh \
+  '/tmp/SDImportMacAppStore.xcarchive/Products/Applications/SD Import for Mac.app'
+```
+
+`REQUIRE_PROVISIONED_SIGNATURE=1` additionally requires embedded profiles with
+the exact App IDs, team, and App Group entitlements, and rejects development
+`get-task-allow`. The normal audit also requires universal app/helper binaries,
+the exact lifetime product identifier in the compiled app, and no StoreKit test
+artifacts. This is the release gate; the ad-hoc staged bundle is only a local
+structure and behavior audit.
+
+Run the development-provisioned sandbox runtime gate from a clean macOS QA
+account:
+
+```bash
+CONFIRM_CLEAN_MAS_QA_ACCOUNT=1 \
+DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer \
+./script/run_mas_runtime_qa.sh
+```
+
+The wrapper builds a fresh Debug MAS app, verifies its signature and production
+App Sandbox, user-selected-folder, and App Group entitlements, and rejects any
+XCTest temporary exception. A standalone Accessibility driver then uses real
+macOS folder panels to authorize a synthetic card and destination, scans and
+imports one JPEG, verifies the copied output, relaunches the same app, and scans
+again through the persisted source bookmark without reopening the folder panel.
+The fixture, app, driver, and DerivedData are removed after the run.
+
+Run the signed login-item/App Group/consent gate from the same clean QA
+account:
+
+```bash
+CONFIRM_CLEAN_MAS_QA_ACCOUNT=1 \
+DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer \
+./script/run_mas_helper_runtime_qa.sh
+```
+
+This second wrapper requires exact Apple Development profiles for both
+`media.jenny.sdimport` and `media.jenny.sdimport.agent`, with
+`group.media.jenny.sdimport` enabled. It rejects Xcode's wildcard
+`Mac Team Provisioning Profile: *` before installing or registering anything.
+The MAS Debug targets intentionally use manual signing with the stable profile
+names `SD Import for Mac Development` and `SD Import Agent Development` so
+Xcode cannot silently fall back to a wildcard profile. Renew or regenerate the
+profiles under the same names to avoid a project-file change.
+It installs a clearly named temporary app below `/Applications`, registers its
+real embedded `SMAppService` login item, and mounts an isolated disk image. A
+Debug-only adapter injects one `MountedVolume` only after the production volume
+eligibility boundary because production deliberately rejects disk images. From
+there, the signed helper, App Group mailbox, containing-app launch, consent
+sheet, and `Don't Scan` path are production code. The driver requires the
+explicit no-scan message, proves no folder panel or review appears before
+consent, declines, and again proves no scan UI appears. The helper is
+unregistered and all exact temporary processes, app files, image, mount, and
+DerivedData are removed after the run.
+
+If macOS retains a disabled historical Login Items record, use the explicit
+two-stage path instead of trying to automate approval:
+
+```bash
+PREPARE_MAS_HELPER_QA_APPROVAL=1 \
+CONFIRM_CLEAN_MAS_QA_ACCOUNT=1 \
+DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer \
+./script/run_mas_helper_runtime_qa.sh
+
+# Manually allow SDImportAgent in System Settings > General >
+# Login Items & Extensions, then:
+RESUME_MAS_HELPER_QA_AFTER_APPROVAL=1 \
+CONFIRM_CLEAN_MAS_QA_ACCOUNT=1 \
+DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer \
+./script/run_mas_helper_runtime_qa.sh
+```
+
+Prepare mode keeps only the exact signed temporary app, its registration, and
+a receipt containing the current Git commit, both code-directory hashes, and
+the driver/wrapper hashes. Resume mode refuses a changed checkout, app, or QA
+tool, revalidates both embedded profiles and signatures, and then runs the same
+mailbox/consent driver without re-registering the approved item. A successful
+resume unregisters and removes everything. A failed resume preserves the
+approval state for diagnosis and retry. Neither mode can grant or bypass Login
+Items approval.
+
+This gate does not prove that macOS reports a physical card as removable or
+that `NSWorkspace.didMountNotification` reaches the helper. Keep physical
+insertion/reinsertion as a distinct pre-submission gate.
+
+This gate requires Accessibility permission for the terminal or automation host.
+It deliberately uses `media.jenny.sdimport`, so it can update that account's MAS
+sandbox preferences, bookmarks, history, and dedupe state. The confirmation
+variable is an intentional guard: do not run it in an account containing real
+MAS user data. It does not simulate removable-media insertion, login-item wake,
+bookmark revocation, StoreKit sandbox, or TestFlight.
+
+Never use `ALLOW_UNTRUSTED_DEVELOPMENT_SIGNATURE=1` as release evidence. It is
+only a diagnostic option for inspecting other bundle properties while a local
+development certificate trust problem is being repaired.
+
+## Current Validation Status
+
+Snapshot through 2026-09-04:
+
+| Goal gate | Current evidence | Remaining evidence |
+| --- | --- | --- |
+| Sandboxed manual import | A standalone, development-provisioned MAS Debug app passed the synthetic runtime gate with App Sandbox, user-selected read/write, and the App Group entitlement, with no temporary exceptions. TestFlight Build 3 then completed the physical processed-build pass with removable ExFAT Secure Digital volume `Untitled`: an isolated source folder contained one 24,073-byte synthetic JPEG, a fresh destination was authorized through `NSOpenPanel`, the receipt reported 1 copied, 0 skipped, and 0 failed, and source/copy SHA-256 values matched exactly. A rescan reported `Nothing New`. TestFlight Build 4 repeated the one-file processed-build sandbox import with an isolated 71,349-byte synthetic JPEG and separately authorized temporary destination; source and copy SHA-256 values both equaled `f9acd8b029aa526537ac260b526043f9344840788ad3fc41474e753c16f631ef`, and the rescan reported `Nothing New`. A second Build 4 physical run on 2026-09-03 used an isolated 995.7 MB website-demo subfolder containing 24 generated 6000 x 4000 JPEGs, three generated 40-second 1080p H.264 MOVs, and six XMP sidecars. The receipt reported 27 copied, six skipped support files, and zero failed; all 27 imported media files matched their sources byte-for-byte. No personal card media was imported or changed, and `Sandisk 4T` was not used. The App Store-shaped Release bundle and trusted Apple Distribution archive also pass their structural and strict signature verifiers. | None for processed-build sandbox import; clean-account stale-bookmark repair is tracked separately. |
+| Destination authorization | User-selected destination bookmarks work for one-off imports and persisted defaults. Apple grants sandbox access to folders chosen through `NSOpenPanel`, and the app stores security-scoped bookmarks for defaults. TestFlight Build 3 exposed an unusable initial fallback: the video destination appeared as `/Users/yihong/Library/Containers/media.jenny.sdimport/Data/Downloads`, Review showed `Permission needed`, and import remained disabled until the owner selected a folder. The source fix leaves App Store destination defaults empty, clears older unauthorized stored fallbacks at startup, preserves paths covered by active bookmarks, and retains the direct edition's historical Pictures/Downloads defaults. A literal real `~/Downloads` path is not substituted because it still lacks a sandbox grant. Exact TestFlight Build 4 passed the live policy: first-launch Settings showed both defaults empty with `Choose a folder`; Review required a folder selection and kept Import disabled; choosing a separate synthetic destination enabled Import; `Use as Defaults` persisted the bookmark; and a timed cold relaunch restored the photo destination as `Ready` by 2.200 seconds without another panel while the unselected video destination remained empty. | None for the initial-default and fresh-bookmark path. Stale/revoked permission repair remains a distinct clean-account gate. |
+| Bookmark persistence and revocation | The runtime gate relaunched the independently signed app, restored the selected synthetic source through its security-scoped bookmark without another folder panel, and completed a second scan. The physical card also remained selectable and scannable across app relaunches without another source panel. Core tests prove exact group-path selection, fail-closed missing-group behavior, one-for-one security-scope lifetime, and that the App Store edition refuses stale bookmarks until a new user selection while the direct edition retains refresh behavior. | Stale-bookmark and revoked-permission repair UI in a clean provisioned QA account. |
+| No scan before consent | The shared mount policy test proves the App Store edition reads no capacity, performs no media probe, and sends no distributed-notification handoff before consent. Both helper and observer use that policy. Builds 3 and 4 passed controlled physical wake and decline/allow flows. Exact TestFlight Build 5 repeated the gate twice on 2026-09-04: the quit app was awakened by `Untitled`, the sheet explicitly said the volume had not been scanned, and no scan or review appeared before consent. `Don't Scan` returned to the authorized source without enumeration; `Allow Scan` automatically selected `/Volumes/Untitled/SDImport-Build5-Demo` and then reported 54 synthetic files. | None for the physical consent gate; clean-account stale-bookmark and revoked-permission repair remain separate. |
+| Sandboxed helper mailbox | Mailbox/causality tests and App Group path tests pass. Exact TestFlight Build 5 Settings reported `Background helper: Running`; `sfltool dumpbtm` reported enabled/allowed/notified sandboxed login item `media.jenny.sdimport.agent`, parent identifier `media.jenny.sdimport`, and parent URL `/Applications/SD Import for Mac.app`. Both installed bundles report build 5, Team `5736QK4NZX`, `TestFlight Beta Distribution`, and strict deep-signature validity. Two physical insertions then proved the helper awakened that exact app path. Builds 2 through 4 supply the earlier stale-registration, mailbox, launchd, and repeated-wake history. | Recheck helper launch after login/reboot. |
+| Source ejection | TestFlight Builds 3 and 4 cover named manual, automatic, busy-volume refusal, subfolder, and grouped-device success paths. Exact Build 5 again exposed Eject before scan, after scan, on the successful receipt, and after `Nothing New`. Its first physical run copied 27 synthetic files totaling 996.2 MB; a continuous second take copied 27 new files totaling 996.3 MB while recognizing 27 known files. Both destination sets matched byte-for-byte. Final eject unmounted `/Volumes/Untitled` while `/Volumes/Sandisk 4T` remained mounted. The app and helper retained only their production sandbox, user-selected-folder, and App Group entitlements. | No remaining single-volume or successful grouped-device ejection case. A partial grouped-device failure remains covered deterministically but was not exercised on this hardware. |
+| StoreKit | Build 1 completed the no-charge purchase; Builds 2 through 4 established the repaired active-entitlement behavior. Exact installed Build 5 again showed `Lifetime access unlocked` without waiting for product metadata, returned Restore Purchases in 241 ms with no authentication sheet, and showed the restored entitlement plus `Background helper: Running` within 1.188 seconds of a cold reopen including Settings navigation. Seven focused orchestration tests and six app-hosted StoreKit tests pass, including purchase, restore, cached entitlement, pending, verification failure, refund/revocation, Family Sharing metadata, timeouts, and stale-latest protection. Source review confirms verified current entitlements accept `.familyShared`, revocations re-resolve the complete entitlement set, and a stale latest transaction cannot regrant access. | This is strong non-live engineering evidence, not a live Family Sharing pass. A separate sandbox-family account is still needed to prove Apple's shared grant and revoke propagation, including a fresh launch after revoke; if accounts remain impractical, release requires explicit acceptance of that residual risk. |
+| Physical insertion re-entrancy | Build 4 terminated on 2026-09-04 when helper-health refresh synchronously consumed another queued mount while the value-type delivery controller was still mutating. Build 5 contains the reference-type coordination fix and nested-delivery regression test. Two physical `Untitled` reinsertions woke exact installed Build 5 and reached consent without `Fatal access conflict detected`; one continued through scan, copy, rescan, and eject. | None for the fixed physical re-entrancy path. |
+| Both editions | 242 package tests pass (235 core tests plus 7 commerce orchestration tests); direct and App Store Release builds succeed; direct Sparkle packaging and identifiers remain intact. The nested foreground/helper regression test and exact Build 5 physical pass both succeed. | Broader unavailable camera hardware remains recorded separately; it is not a Build 5 regression blocker. |
+| Archive inspection | Builds 3 through 5 were compiled with accepted Xcode 26.6 build `17F113`, manually distribution-signed with the exact app/helper profiles, strictly verified, uploaded successfully, processed to `Complete` / `Ready to Submit`, and assigned to `IQ Internal QA`. Build 5's preserved signed archive ZIP is `/private/tmp/sdimport-build5.SmfHW4/SDImportMacAppStore-1.0-5-signed.zip` with SHA-256 `05a839956f27d36e0bcff54fd24e0da93443d975c0d964a31a7b9173ddc14339`. The exact installed Build 5 app/helper retain identifiers `media.jenny.sdimport` and `media.jenny.sdimport.agent`, build 5, Team `5736QK4NZX`, TestFlight signatures, strict deep-signature validity, live entitlement, live helper registration, physical consent/import/ejection, and dedupe evidence. Earlier Build 2 also documents the rejected Xcode 27 beta upload and accepted stable-Xcode rebuild. | Future builds declare exempt encryption in both bundle plists and the verifier enforces that declaration. |
+
+The standalone synthetic runtime gate is counted only for manual folder
+authorization, copying, and same-folder bookmark relaunch. The distinct
+physical pass covers removable-media delivery, app-level consent, a completed
+copy, and known-file rescan. It does not cover permission revocation or
+StoreKit. App-hosted StoreKit simulation is likewise not counted as sandboxed
+file or helper evidence. Those remaining flows still require the manual
+provisioned-build matrix.
+
+An earlier outside-sandbox archive on 2026-08-30, before Release-only manual
+signing and the matching private key were installed, completed with exit status
+zero but used Apple Development and wildcard team profiles. The strict verifier
+correctly rejected it. After installing the private key and pinning the two
+Release profiles, a fresh post-StoreKit-fix archive used Apple Distribution and
+passed `REQUIRE_PROVISIONED_SIGNATURE=1`. A successful `xcodebuild archive`
+alone is therefore still insufficient; the verifier result is the evidence.
+
+## Apple Account Setup
+
+Completed in the Apple Developer account through 2026-09-03:
+
+- Registered explicit App IDs `media.jenny.sdimport` and
+  `media.jenny.sdimport.agent`.
+- Registered `group.media.jenny.sdimport`, enabled App Groups for both App IDs,
+  and assigned the exact group to both.
+- Created and installed `SD Import for Mac App Store` and
+  `SD Import Agent App Store` distribution profiles. Both expire 2027-07-03
+  and contain the expected application identifier and App Group entitlements.
+- Restored the matching `YTAJ6D4BV2` Apple Distribution identity and private
+  key to this Mac's login Keychain, verified it with a disposable signing probe,
+  and used it for a successful strict archive.
+- Created and installed `SD Import for Mac Development` and
+  `SD Import Agent Development` for this Mac. They expire 2027-08-31, embed the
+  usable Apple Development identity, authorize the exact app identifiers, and
+  contain `group.media.jenny.sdimport`.
+- Created the macOS App Store Connect record `SD Import for Mac` with Apple ID
+  `6807178069`, bundle ID `media.jenny.sdimport`, SKU
+  `media.jenny.sdimport.macos`, and version 1.0.
+- Rechecked the saved 1.0 record on 2026-09-04. It contains Build 5, the five
+  refreshed screenshots in the intended order, the complete description and
+  canonical support/marketing URLs, the `sd@jenny.media` review contact, and
+  manual release. App Information reports Photo & Video with secondary
+  Utilities and age rating 4+. App Privacy is published with `Data Not
+  Collected` and the canonical privacy URL. Pricing reports 175 available
+  countries or regions with Public distribution.
+- Created the non-consumable IAP `SD Import Unlimited` with Apple ID
+  `6807199159` and product ID `media.jenny.sdimport.unlimited`. Its worldwide
+  availability, U.S. base price of USD 9.99, English (U.S.) localization, and
+  review notes are saved, and Family Sharing is enabled.
+- Verified the Free Apps and Paid Apps agreements, banking, U.S. tax, and DSA
+  compliance entry are present for Jenny Media LLC. The prior non-trader choice
+  was identified and changed to trader on 2026-09-03. App Store Connect now
+  reports Digital Services Act status `Active`, last updated 2026-09-03.
+  Reopening the record confirms `I'm a trader under the DSA` is selected and
+  the verified public support email and phone are saved with the D&B-supplied
+  business address. Apple did not request a separate business document in this
+  completed flow.
+
+The two distribution profiles cannot be used for local runtime QA because macOS
+does not launch App Store distribution builds outside App Store/TestFlight.
+
+Three additional owner-facing release tasks were completed through App Store
+Connect on 2026-09-03. The DSA trader declaration is verified and Active. The
+IAP review screenshot is also complete: an opaque 2560 x 1600 JPEG re-encoding
+of the real purchase sheet from the checked-in StoreKit configuration was
+uploaded and visually verified without black framing. After the Build 4
+physical-insertion crash, the original submission
+`adc08664-db2c-4d3b-93bb-d77d1caf6284` was removed, Build 5 was selected, and
+macOS 1.0 plus `SD Import Unlimited` were resubmitted with explicit owner
+authorization under `2f1632a6-a99f-4fba-99ff-3c443bd68523`. Both items report
+`Waiting for Review`. A fresh non-owner sandbox account is needed only if a
+processed-build purchase capture is required.
+
+These post-submission follow-ups remain and are intentionally not performed by
+build scripts:
+
+1. If suitable accounts can be created, complete a live sandbox Family Sharing
+   grant/revoke pass with a separate sandbox-family account. Otherwise record
+   explicit acceptance of the residual platform-integration risk; code review
+   and local StoreKit tests are strong evidence but are not a live pass.
+2. Monitor App Review and respond if Apple requests information or a new build.
+   Do not cancel or replace the active submission without separate owner
+   authorization. Because manual release is selected, an approval does not
+   publish the app until the owner separately releases version 1.0.
+
+The preferred consent-prompt and complete workflow capture are refreshed. On
+2026-09-04, physical reinsertion of `Untitled` woke exact TestFlight Build 5
+and displayed the no-scan consent sheet before any enumeration. The saved
+source authorization restricted the scan to
+`/Volumes/Untitled/SDImport-Build5-Demo`. Two isolated 27-file synthetic sets
+were imported to separately authorized temporary destinations with zero
+SHA-256 mismatches. The second run was recorded continuously at native
+3024 x 1964 with the real system cursor and click highlights; the website
+encode is a continuous 126.5-second 1920 x 1156 H.264/yuv420p segment with only
+pre-workflow waiting time and the menu/title strip removed. No personal source
+was used, and `Sandisk 4T` was neither used nor unmounted.
+
+The public-site gate is complete. On 2026-09-04, Vercel production deployment
+`dpl_4AKHwD2jY6EqXHNcr6MmwQR1kWCz` became Ready and was aliased to
+`https://sd.jenny.media/`. It was promoted only after preview deployment
+`dpl_EcUfKLJHnkrorVAVzRpHHSqkxYd9` became Ready and its authenticated HTML was
+verified. The home page now presents five distinct exact-TestFlight-Build-5
+states: insertion consent, review-ready plan, genuine copy progress, successful
+receipt with named eject, and a `Nothing New` rescan. The source captures are
+opaque 3024 x 1820 RGB PNGs with 640, 1200, and 1920-pixel responsive WebP
+variants. The continuous 126.516667-second workflow video is 1920 x 1156
+H.264/yuv420p at a constant 60 fps, retains the real system pointer and click
+highlights, and removes only pre-workflow waiting time plus the macOS menu/title
+strip. Live browser verification loaded the video at the expected dimensions
+and duration and rendered the consent and `Nothing New` states without an
+embedded black canvas. The canonical home, privacy, and support pages, sampled
+responsive images, and the 5,689,399-byte MP4 all returned HTTPS 200 with the
+expected content types. Privacy and Support both contain `sd@jenny.media`. The
+legacy `sd-import.jenny.media` and `macos-automation.vercel.app` aliases remain
+live, so Build 4's embedded links still reach the current disclosures.
+
+The exact owner-reviewed fields, copy, review notes, privacy draft, and
+screenshot plan are maintained in
+[`app-store-connect-metadata.md`](app-store-connect-metadata.md).
+
+The local archive gate now passes without overrides and the first app/IAP review
+submission is Waiting for Review. The remaining release gates are Apple's review
+outcome and, if approved, the separately authorized manual release. Live sandbox
+Family Sharing remains an explicitly accepted residual platform-integration
+risk, and the manual matrix below records the tested evidence and optional
+future capture gaps.
+
+## App Store Assets And Metadata
+
+Prepare these items before creating the first submission:
+
+- App name `SD Import for Mac`, free app price, primary category Photography,
+  age rating, content-rights answer, availability, copyright, and release mode.
+- Subtitle, description, keywords, support URL, and privacy policy URL. The
+  App Store metadata URLs are `https://sd.jenny.media/support.html` and
+  `https://sd.jenny.media/privacy.html`. Build 4's legacy
+  `macos-automation.vercel.app` links resolve to the same deployed content.
+- Between one and ten Mac screenshots, all without transparency, at one
+  accepted 16:10 size: 1280 x 800, 1440 x 900, 2560 x 1600, or 2880 x 1800.
+  Include the scan-consent prompt, preview, destination planning, purchase
+  screen, and completed-import report without personal filenames or volumes.
+  Five opaque 2560 x 1600 images are uploaded to the 1.0 draft in this order:
+  file preview, destination plan, lifetime purchase sheet, successful synthetic
+  receipt, and supplemental exact-Build-4 Settings proof. The Build 4 images are
+  new window-only captures;
+  the purchase image retains the genuine local StoreKit UI and removes only the
+  external remote-control indicator from the otherwise blank titlebar area. The
+  consent prompt has since been captured from the allowed `Untitled` card for
+  the public workflow, but the already-submitted App Store gallery remains
+  unchanged while version 1.0 is Waiting for Review.
+- App Review contact details and notes that describe the background helper,
+  the two-step scan consent, the first completed import being free, where to
+  purchase or restore, and how to exercise the flow with synthetic media.
+- Export-compliance determination and the App Privacy answer matching the
+  shipped behavior: no developer analytics or server collection, with Apple
+  processing StoreKit transactions.
+- For `media.jenny.sdimport.unlimited`: Non-Consumable type, reference name
+  `SD Import Unlimited`, U.S. base price USD 9.99, English (U.S.) localization,
+  review notes, and a review-only screenshot showing the purchase UI. Family
+  Sharing is enabled in App Store Connect and matches the local StoreKit
+  configuration. This setting is irreversible.
+- Add the first non-consumable to the same draft submission as the first app
+  version; Apple requires the first item of that purchase type to accompany a
+  new app version.
+
+Current Apple references: [Mac screenshot specifications](https://developer.apple.com/help/app-store-connect/reference/app-information/screenshot-specifications/),
+[required app properties](https://developer.apple.com/help/app-store-connect/reference/app-information/required-localizable-and-editable-properties),
+[IAP information](https://developer.apple.com/help/app-store-connect/reference/in-app-purchases-and-subscriptions/in-app-purchase-information),
+and [first-IAP submission](https://developer.apple.com/help/app-store-connect/manage-submissions-to-app-review/submit-an-in-app-purchase).
+
+## Manual App Store QA
+
+Use a clean macOS account or reset container permissions. Use synthetic test
+media unless the owner explicitly authorizes a personal card.
+
+- Launch with no prior bookmarks; select destination folders and relaunch to
+  prove bookmark persistence.
+- Enable the login item, quit the main app, and insert a card. Confirm the
+  helper wakes the app without enumerating the card.
+- Decline the app's scan prompt and confirm no media is enumerated.
+- Accept the scan prompt, decline the macOS folder panel, and confirm no scan.
+- Accept both prompts, scan, preview, and complete one import.
+- Confirm previews and failed/empty imports do not consume the free allowance.
+- Confirm a second completed import requires the lifetime purchase.
+- Exercise purchase, cancellation, pending approval, restore, refund, and
+  revocation with StoreKit sandbox/TestFlight accounts.
+- Exercise a shared non-consumable with a StoreKit sandbox family and confirm
+  the family member gains and loses access as the shared entitlement changes.
+- Confirm the App Store edition has no Sparkle UI, legacy-state import, or
+  system crash-report browser. Confirm source-eject controls appear only for a
+  selected, verified removable source and never while scanning or copying.
+- Reinsert the same card and confirm a new consent prompt appears before a new
+  scan while the retained security-scoped permission still resolves correctly.
+- Export and review redacted diagnostics; confirm no filenames or full paths
+  are included.
+
+Do not submit, upload, or publish until the owner explicitly authorizes that
+external action.

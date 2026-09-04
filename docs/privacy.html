@@ -13,13 +13,13 @@
     <meta property="og:title" content="SD Import Privacy Policy">
     <meta property="og:description" content="How SD Import stores app data locally and handles diagnostics and update checks.">
     <meta property="og:type" content="website">
-    <meta property="og:url" content="https://macos-automation.vercel.app/privacy.html">
-    <meta property="og:image" content="https://macos-automation.vercel.app/assets/images/sd-import-screenshot.png">
+    <meta property="og:url" content="https://sd.jenny.media/privacy.html">
+    <meta property="og:image" content="https://sd.jenny.media/assets/images/sd-import-screenshot.png">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="SD Import Privacy Policy">
     <meta name="twitter:description" content="How SD Import stores app data locally and handles diagnostics and update checks.">
-    <meta name="twitter:image" content="https://macos-automation.vercel.app/assets/images/sd-import-screenshot.png">
-    <link rel="canonical" href="https://macos-automation.vercel.app/privacy.html">
+    <meta name="twitter:image" content="https://sd.jenny.media/assets/images/sd-import-screenshot.png">
+    <link rel="canonical" href="https://sd.jenny.media/privacy.html">
     <link rel="stylesheet" href="assets/site-20260512.css?v=20260530c">
 </head>
 <body class="preload">
@@ -46,22 +46,24 @@
     <main id="main" class="container">
         <section class="page-title">
             <h1>Privacy Policy</h1>
-            <p>Last updated: 2026-07-31. SD Import is a local macOS utility for copying photos and videos from SD cards or selected source folders.</p>
+            <p>Last updated: 2026-08-30. SD Import is a local macOS utility for copying photos and videos from SD cards or selected source folders.</p>
         </section>
         <section class="section section-divider">
             <article class="policy-box">
                 <h2>Data stored locally</h2>
-                <p>SD Import stores app settings, security-scoped folder bookmarks, import history, and dedupe records on your Mac under <code>~/Library/Application Support/SD Import/state.sqlite</code>. It may also store ordinary preferences through macOS UserDefaults.</p>
+                <p>SD Import stores app settings, security-scoped folder bookmarks, import history, and dedupe records locally. The direct-download edition uses <code>~/Library/Application Support/SD Import/state.sqlite</code>; the Mac App Store edition uses its macOS app container. The App Store helper and main app share only a sandboxed App Group mailbox for mount events and helper health.</p>
                 <h2>Optional portable import receipts</h2>
                 <p>If you enable portable import receipts, SD Import creates or appends <code>.sd-import/imported-v1.jsonl</code> on writable sources. The hidden ledger contains versioned file fingerprints, relative source paths, sizes, modification and import timestamps, and validation checksums so another Mac can avoid duplicate imports. It does not contain destination paths, usernames, or media contents. The option is disabled by default, read-only sources continue without writing portable history, and ledger access refuses symbolic-link redirection outside the selected source.</p>
                 <h2>Network use</h2>
-                <p>The native app uses the network for Sparkle update checks when updates are configured in the installed release build. Update checks contact the GitHub Release-hosted appcast for this repository.</p>
+                <p>The direct-download edition uses the network for Sparkle update checks when configured. Sparkle is not included in the Mac App Store edition; the App Store delivers its updates. The App Store edition uses Apple StoreKit to load, purchase, and restore the optional lifetime unlock. Apple processes transactions. SD Import has no account or purchase server and does not receive payment details.</p>
+                <h2>Removable media permission</h2>
+                <p>The Mac App Store helper may detect that a removable volume mounted, but it does not enumerate or scan the volume. The main app asks before each newly detected card scan. If access is not already authorized, macOS presents a folder-access panel. Scanning begins only after both steps are accepted, and access is retained locally as a security-scoped bookmark.</p>
                 <h2>No automatic telemetry</h2>
-                <p>SD Import does not send analytics, telemetry, import history, media files, folder listings, or crash reports to the maintainer. Diagnostics export is opt-in and redacted. The app can reveal the local macOS crash-report folder or export the latest local SD Import crash report, but it does not upload crash reports automatically.</p>
+                <p>SD Import does not send analytics, telemetry, import history, media files, folder listings, or crash reports to the maintainer. Diagnostics export is opt-in and redacted. The direct-download edition can reveal the local macOS crash-report folder or export the latest local SD Import crash report. The sandboxed Mac App Store edition does not browse that system directory. Neither edition uploads crash reports automatically.</p>
                 <h2>Support requests</h2>
                 <p>Public GitHub issues are visible to everyone. Do not attach private photos, videos, full card dumps, credentials, or unredacted logs to public issues.</p>
                 <h2>Contact</h2>
-                <p>Email privacy and support questions to <a href="mailto:i@xcv58.com">i@xcv58.com</a>.</p>
+                <p>Email privacy and support questions to <a href="mailto:sd@jenny.media">sd@jenny.media</a>.</p>
             </article>
         </section>
     </main>

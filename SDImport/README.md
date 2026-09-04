@@ -12,8 +12,9 @@ The app target is `SDImportApp`, backed by `Packages/SDImportCore` for shared sc
 
 Public native releases are Apple Silicon (`arm64`) builds for macOS 14 or newer.
 GitHub Releases plus Sparkle are the supported distribution and update path.
-Homebrew, App Store, paid licensing, and payment infrastructure are intentionally
-out of scope for the current release track.
+That remains the direct-download release track. The separate universal Mac App
+Store target, sandbox boundaries, StoreKit tests, and owner-side release gates
+are documented in `docs/mac-app-store-release.md` from the repository root.
 
 ## Developer Notes
 

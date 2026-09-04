@@ -5,7 +5,11 @@ import ServiceManagement
 
 @MainActor
 enum LoginItemController {
-    static let identifier = "com.xcv58.SDImport.Agent"
+    static var identifier: String {
+        AppDistribution.current == .macAppStore
+            ? AppDistribution.appStoreAgentBundleIdentifier
+            : "com.xcv58.SDImport.Agent"
+    }
 
     private static var cachedApplicationOwnership: BackgroundPromptApplicationOwnership?
 

@@ -6,6 +6,18 @@ import Testing
 @Suite("Main window presenter")
 @MainActor
 struct MainWindowPresenterTests {
+    @Test("startup presentation is safe before NSApplication exists")
+    func toleratesMissingApplicationDuringStartup() {
+        let coordinator = MainWindowPresentationCoordinator()
+
+        let result = MainWindowPresenter.present(
+            application: nil,
+            coordinator: coordinator
+        )
+
+        #expect(result == .unavailable)
+    }
+
     @Test("restores a minimized main window before presenting it")
     func restoresMinimizedWindow() {
         let window = WindowSpy(isMiniaturized: true)
