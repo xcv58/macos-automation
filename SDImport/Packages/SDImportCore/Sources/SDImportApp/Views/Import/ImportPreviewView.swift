@@ -1,4 +1,5 @@
 import AppKit
+import SDImportCommerce
 import SDImportCore
 import SwiftUI
 
@@ -1074,6 +1075,7 @@ struct ImportPreviewView: View {
 
 private struct ImportReviewPrimaryAction: View {
     @EnvironmentObject private var model: AppModel
+    @EnvironmentObject private var purchaseManager: PurchaseManager
 
     var body: some View {
         Button {
@@ -1093,6 +1095,9 @@ private struct ImportReviewPrimaryAction: View {
     private var buttonTitle: String {
         guard model.previewTotals.copyFiles > 0 else {
             return "Nothing to Import"
+        }
+        if !purchaseManager.canStartImport {
+            return "Unlock Unlimited Imports"
         }
         return model.previewTotals.copyFiles == 1
             ? "Import 1 File"

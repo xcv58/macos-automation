@@ -59,8 +59,9 @@ Common local commands:
 
 Public releases use the Developer ID, notarization, GitHub Release, and Sparkle
 flow documented in [docs/sdimport-release-runbook.md](docs/sdimport-release-runbook.md).
-The native public release path does not include Homebrew, the App Store, paid
-licensing, or payment infrastructure.
+That remains the direct-download release track. A separate sandboxed Mac App
+Store track, including its optional lifetime IAP and release gates, is
+documented in [docs/mac-app-store-release.md](docs/mac-app-store-release.md).
 
 Production-readiness docs:
 

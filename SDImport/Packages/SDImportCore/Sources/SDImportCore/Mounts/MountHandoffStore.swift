@@ -112,7 +112,7 @@ public struct MountHandoffStore {
     }
 
     public static func defaultStore(fileManager: FileManager = .default) throws -> MountHandoffStore {
-        let supportURL = try DatabasePoolFactory.defaultApplicationSupportDirectory(fileManager: fileManager)
+        let supportURL = try AppGroupContainer.sharedSupportDirectory(fileManager: fileManager)
         return MountHandoffStore(
             directoryURL: supportURL.appendingPathComponent("Mount Handoffs", isDirectory: true),
             fileManager: fileManager

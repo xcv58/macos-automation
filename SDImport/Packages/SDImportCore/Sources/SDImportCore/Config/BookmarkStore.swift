@@ -1,10 +1,54 @@
 import Foundation
 import GRDB
 
-public enum BookmarkPurpose: String, Codable, CaseIterable, Sendable {
+public enum BookmarkPurpose: String, Codable, CaseIterable, Hashable, Sendable {
     case source
     case photos
     case videos
+}
+
+public enum StaleBookmarkHandling: Equatable, Sendable {
+    case refresh
+    case requireNewSelection
+}
+
+enum BookmarkAccessDecision: Equatable, Sendable {
+    case beginAccess(refreshBookmark: Bool)
+    case requireNewSelection
+}
+
+public final class SecurityScopedResourceAccess: @unchecked Sendable {
+    public let url: URL
+    private let didStartAccess: Bool
+    private let stopAccess: (URL) -> Void
+
+    public var isActive: Bool {
+        didStartAccess
+    }
+
+    public convenience init(url: URL) {
+        self.init(
+            url: url,
+            startAccess: { $0.startAccessingSecurityScopedResource() },
+            stopAccess: { $0.stopAccessingSecurityScopedResource() }
+        )
+    }
+
+    init(
+        url: URL,
+        startAccess: (URL) -> Bool,
+        stopAccess: @escaping (URL) -> Void
+    ) {
+        self.url = url
+        didStartAccess = startAccess(url)
+        self.stopAccess = stopAccess
+    }
+
+    deinit {
+        if didStartAccess {
+            stopAccess(url)
+        }
+    }
 }
 
 public struct ResolvedBookmark: Hashable, Sendable {
@@ -77,6 +121,45 @@ public struct BookmarkStore {
                 bookmarkDataIsStale: &isStale
             )
             return ResolvedBookmark(purpose: purpose, url: url, isStale: isStale)
+        }
+    }
+
+    public func beginAccess(
+        purpose: BookmarkPurpose,
+        staleBookmarkHandling: StaleBookmarkHandling = .refresh
+    ) throws -> SecurityScopedResourceAccess? {
+        guard let resolved = try resolveBookmark(purpose: purpose) else {
+            return nil
+        }
+
+        switch Self.accessDecision(
+            isStale: resolved.isStale,
+            staleBookmarkHandling: staleBookmarkHandling
+        ) {
+        case .requireNewSelection:
+            return nil
+        case .beginAccess(let refreshBookmark):
+            let access = SecurityScopedResourceAccess(url: resolved.url)
+            if refreshBookmark {
+                try saveBookmark(purpose: purpose, url: resolved.url)
+            }
+            return access
+        }
+    }
+
+    static func accessDecision(
+        isStale: Bool,
+        staleBookmarkHandling: StaleBookmarkHandling
+    ) -> BookmarkAccessDecision {
+        guard isStale else {
+            return .beginAccess(refreshBookmark: false)
+        }
+
+        switch staleBookmarkHandling {
+        case .refresh:
+            return .beginAccess(refreshBookmark: true)
+        case .requireNewSelection:
+            return .requireNewSelection
         }
     }
 

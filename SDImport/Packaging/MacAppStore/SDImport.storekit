@@ -1,0 +1,32 @@
+{
+  "identifier" : "9B5B4B6B-2F6D-4FB7-A7A2-BCE77CC5C398",
+  "nonRenewingSubscriptions" : [
+  ],
+  "products" : [
+    {
+      "displayPrice" : "9.99",
+      "familyShareable" : true,
+      "internalID" : "321B01AA-00A4-4C4D-A4B1-53E76163FD8C",
+      "localizations" : [
+        {
+          "description" : "Unlimited SD imports with Family Sharing.",
+          "displayName" : "SD Import Unlimited",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "media.jenny.sdimport.unlimited",
+      "referenceName" : "SD Import Unlimited",
+      "type" : "NonConsumable"
+    }
+  ],
+  "settings" : {
+    "_applicationInternalID" : "1234567890",
+    "_developerTeamID" : "5736QK4NZX"
+  },
+  "subscriptionGroups" : [
+  ],
+  "version" : {
+    "major" : 4,
+    "minor" : 0
+  }
+}

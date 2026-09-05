@@ -3,7 +3,10 @@ import Foundation
 import OSLog
 import SDImportCore
 
-private let agentLogger = Logger(subsystem: "com.xcv58.SDImport", category: "BackgroundPrompt")
+private let agentLogger = Logger(
+    subsystem: Bundle.main.bundleIdentifier ?? "com.xcv58.SDImport.Agent",
+    category: "BackgroundPrompt"
+)
 
 @main
 @MainActor
@@ -22,9 +25,13 @@ struct SDImportAgent {
 
 @MainActor
 private final class AgentDelegate: NSObject, NSApplicationDelegate {
-    private static let mainBundleIdentifier = "com.xcv58.SDImport"
+    private static var mainBundleIdentifier: String {
+        Bundle.main.object(forInfoDictionaryKey: "SDImportMainBundleIdentifier") as? String
+            ?? "com.xcv58.SDImport"
+    }
 
     private let detector = VolumeDetector()
+    private let mountPrivacyPolicy = AppDistribution.current.mountPrivacyPolicy
     private var token: NSObjectProtocol?
 
     private var agentBuild: String {
@@ -57,11 +64,44 @@ private final class AgentDelegate: NSObject, NSApplicationDelegate {
                 self?.handleMountURL(mountURL)
             }
         }
+#if DEBUG
+        if
+            let mountURL = BackgroundPromptRuntimeQA.injectedMountURL(),
+            let values = try? mountURL.resourceValues(forKeys: [.isDirectoryKey, .volumeURLKey]),
+            values.isDirectory == true,
+            values.volume?.standardizedFileURL == mountURL.standardizedFileURL,
+            let appURL = containingMainApplicationURL
+        {
+            do {
+                try BackgroundPromptRuntimeQA.markHelperLifecycleActive(
+                    targetApplicationURL: appURL
+                )
+            } catch {
+                try? BackgroundPromptAgentStateStore.defaultStore().recordError(
+                    agentBuild: agentBuild,
+                    agentBundlePath: agentBundlePath,
+                    message: "Could not mark the helper runtime QA lifecycle as active"
+                )
+                agentLogger.error("Could not mark the helper runtime QA lifecycle as active")
+                return
+            }
+            handleImportableVolume(
+                BackgroundPromptRuntimeQA.injectedPostDetectionVolume(at: mountURL)
+            )
+        }
+#endif
     }
 
     private func handleMountURL(_ mountURL: URL) {
-        let volume = detector.mountedVolume(from: mountURL)
+        let volume = detector.mountedVolume(
+            from: mountURL,
+            includeCapacity: mountPrivacyPolicy.includesCapacityBeforeConsent
+        )
         guard detector.isLikelyImportVolume(volume) else {
+            return
+        }
+        if !mountPrivacyPolicy.probesMediaBeforeConsent {
+            handleImportableVolume(volume)
             return
         }
         Task.detached(priority: .utility) { [weak self] in
@@ -128,7 +168,9 @@ private final class AgentDelegate: NSObject, NSApplicationDelegate {
         }
 
         activateOrLaunchMainApp(at: appURL, eventSequence: eventSequence)
-        post(volume, eventID: event?.id, targetApplicationPath: appURL.path)
+        if mountPrivacyPolicy.usesDistributedNotificationHandoff {
+            post(volume, eventID: event?.id, targetApplicationPath: appURL.path)
+        }
     }
 
     private func activateOrLaunchMainApp(at appURL: URL, eventSequence: UInt64) {
@@ -149,6 +191,15 @@ private final class AgentDelegate: NSObject, NSApplicationDelegate {
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.activates = true
         configuration.createsNewApplicationInstance = !runningApplications.isEmpty
+#if DEBUG
+        if BackgroundPromptRuntimeQA.injectedMountURL() != nil {
+            configuration.arguments = [
+                BackgroundPromptRuntimeQA.consumeHandoffArgument,
+                "-ApplePersistenceIgnoreState",
+                "YES",
+            ]
+        }
+#endif
         NSWorkspace.shared.openApplication(at: appURL, configuration: configuration) { _, error in
             if error != nil {
                 try? BackgroundPromptAgentStateStore.defaultStore().recordError(

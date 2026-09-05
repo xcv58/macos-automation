@@ -10,28 +10,40 @@ public struct VolumeDetector: Sendable {
         self.ignoredNameFragments = ignoredNameFragments.map { $0.lowercased() }
     }
 
-    public func mountedVolume(from mountURL: URL) -> MountedVolume {
-        let values = try? mountURL.resourceValues(forKeys: [
+    public func mountedVolume(
+        from mountURL: URL,
+        includeCapacity: Bool = true
+    ) -> MountedVolume {
+        var resourceKeys: Set<URLResourceKey> = [
             .volumeNameKey,
             .volumeUUIDStringKey,
             .volumeIsRemovableKey,
             .volumeIsEjectableKey,
-            .volumeIsInternalKey,
-            .volumeTotalCapacityKey,
-            .volumeAvailableCapacityKey,
-            .volumeAvailableCapacityForImportantUsageKey
-        ])
+            .volumeIsInternalKey
+        ]
+        if includeCapacity {
+            resourceKeys.formUnion([
+                .volumeTotalCapacityKey,
+                .volumeAvailableCapacityKey,
+                .volumeAvailableCapacityForImportantUsageKey
+            ])
+        }
+        let values = try? mountURL.resourceValues(forKeys: resourceKeys)
         let name = values?.volumeName ?? mountURL.lastPathComponent
         let diskTraits = Self.diskTraits(for: mountURL)
         let isRemovable = (values?.volumeIsRemovable ?? false)
             || (values?.volumeIsEjectable ?? false)
             || diskTraits.isRemovable
             || diskTraits.isEjectable
-        let totalCapacity = values?.volumeTotalCapacity.map(Int64.init)
-        let availableCapacity = Self.sourceAvailableCapacity(
-            available: values?.volumeAvailableCapacity.map(Int64.init),
-            importantUsage: values?.volumeAvailableCapacityForImportantUsage
-        )
+        let totalCapacity = includeCapacity
+            ? values?.volumeTotalCapacity.map(Int64.init)
+            : nil
+        let availableCapacity = includeCapacity
+            ? Self.sourceAvailableCapacity(
+                available: values?.volumeAvailableCapacity.map(Int64.init),
+                importantUsage: values?.volumeAvailableCapacityForImportantUsage
+            )
+            : nil
 
         return MountedVolume(
             id: values?.volumeUUIDString ?? mountURL.standardizedFileURL.path,
@@ -52,18 +64,23 @@ public struct VolumeDetector: Sendable {
 
     public func allMountedVolumes(
         under rootURL: URL = URL(fileURLWithPath: "/Volumes", isDirectory: true),
-        fileManager: FileManager = .default
+        fileManager: FileManager = .default,
+        includeCapacity: Bool = true
     ) -> [MountedVolume] {
-        let keys: Set<URLResourceKey> = [
+        var keys: Set<URLResourceKey> = [
             .volumeNameKey,
             .volumeUUIDStringKey,
             .volumeIsRemovableKey,
             .volumeIsEjectableKey,
-            .volumeIsInternalKey,
-            .volumeTotalCapacityKey,
-            .volumeAvailableCapacityKey,
-            .volumeAvailableCapacityForImportantUsageKey
+            .volumeIsInternalKey
         ]
+        if includeCapacity {
+            keys.formUnion([
+                .volumeTotalCapacityKey,
+                .volumeAvailableCapacityKey,
+                .volumeAvailableCapacityForImportantUsageKey
+            ])
+        }
         guard
             let urls = try? fileManager.contentsOfDirectory(
                 at: rootURL,
@@ -74,14 +91,21 @@ public struct VolumeDetector: Sendable {
             return []
         }
 
-        return urls.map(mountedVolume(from:))
+        return urls.map { mountedVolume(from: $0, includeCapacity: includeCapacity) }
     }
 
     public func mountedVolumes(
         under rootURL: URL = URL(fileURLWithPath: "/Volumes", isDirectory: true),
-        fileManager: FileManager = .default
+        fileManager: FileManager = .default,
+        includeCapacity: Bool = true
     ) -> [MountedVolume] {
-        likelyImportVolumes(from: allMountedVolumes(under: rootURL, fileManager: fileManager))
+        likelyImportVolumes(
+            from: allMountedVolumes(
+                under: rootURL,
+                fileManager: fileManager,
+                includeCapacity: includeCapacity
+            )
+        )
     }
 
     public func likelyImportVolumes(from volumes: [MountedVolume]) -> [MountedVolume] {

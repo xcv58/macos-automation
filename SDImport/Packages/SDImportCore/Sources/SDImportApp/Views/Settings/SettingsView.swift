@@ -1,3 +1,4 @@
+import SDImportCommerce
 import SDImportCore
 import SwiftUI
 
@@ -13,6 +14,7 @@ private struct DestinationPathInputs: Hashable {
 
 struct SettingsView: View {
     @EnvironmentObject private var model: AppModel
+    @EnvironmentObject private var purchaseManager: PurchaseManager
     @AppStorage("SDImport.selectedSettingsPane") private var selectedPane = SettingsPane.general
     @State private var isShowingPruneConfirmation = false
     @State private var validatedDestinationInputs: DestinationPathInputs?
@@ -176,19 +178,21 @@ struct SettingsView: View {
                             }
                         }
 
-                        Divider()
-                            .padding(.vertical, 12)
+                        if AppDistribution.current.supportsSourceEjection {
+                            Divider()
+                                .padding(.vertical, 12)
 
-                        VStack(alignment: .leading, spacing: 5) {
-                            Toggle("Eject source device after a successful import", isOn: $model.ejectAfterSuccessfulImport)
-                                .onChange(of: model.ejectAfterSuccessfulImport) {
-                                    model.savePreferences()
-                                }
+                            VStack(alignment: .leading, spacing: 5) {
+                                Toggle("Eject source device after a successful import", isOn: $model.ejectAfterSuccessfulImport)
+                                    .onChange(of: model.ejectAfterSuccessfulImport) {
+                                        model.savePreferences()
+                                    }
 
-                            Text("After an error-free copy, ejects all removable storage volumes macOS identifies as belonging to the source device. Zero-copy scans still require manual ejection.")
-                                .font(.callout)
-                                .foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
+                                Text("After an error-free copy, ejects all removable storage volumes macOS identifies as belonging to the source device. Zero-copy scans still require manual ejection.")
+                                    .font(.callout)
+                                    .foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
                         }
 
                         Divider()
@@ -208,6 +212,48 @@ struct SettingsView: View {
                                 .foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
+                    }
+                }
+
+                if purchaseManager.isMacAppStoreEdition {
+                    SettingsGroup("Purchase") {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text(purchaseManager.allowanceSummary)
+                                .foregroundStyle(.secondary)
+
+                            HStack(spacing: 10) {
+                                Button("Unlock Unlimited Imports…") {
+                                    purchaseManager.isShowingPurchase = true
+                                }
+                                .disabled(purchaseManager.hasLifetimeUnlock)
+
+                                Button("Restore Purchases") {
+                                    Task {
+                                        await purchaseManager.restorePurchases()
+                                    }
+                                }
+                                .disabled(purchaseManager.isPerformingStoreOperation)
+                            }
+
+                            if let message = purchaseManager.statusMessage {
+                                Text(message)
+                                    .font(.callout)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+
+                SettingsGroup("Privacy & Support") {
+                    HStack(spacing: 10) {
+                        Link(
+                            "Privacy Policy",
+                            destination: URL(string: "https://macos-automation.vercel.app/privacy.html")!
+                        )
+                        Link(
+                            "Support",
+                            destination: URL(string: "https://macos-automation.vercel.app/support.html")!
+                        )
                     }
                 }
 
