@@ -9,10 +9,10 @@ real progress, and click rings added only at genuine clicks.
 - Target: SD Import website.
 - Length: about 30-40 seconds.
 - Output: H.264 MP4, 1920 pixels wide, 60 fps, `yuv420p`, fast-start enabled.
-- Source card: the dedicated removable volume named `Untitled` only.
+- Source card: the dedicated removable volume named `Sample Card` only.
 - Never use `Sandisk 4T`.
 - Source media: the isolated synthetic fixture only.
-- Destination: `~/Pictures/SD Import Library`, authorized through the macOS
+- Destination: `/Users/Shared/SD Import Library`, authorized through the macOS
   folder picker.
 - Shoot name: `Sample Shoot`.
 - Pointer: record the real macOS pointer and its complete movement. Keep any UI
@@ -62,39 +62,74 @@ After mounting the dedicated test card, create a new run-specific source:
 
 ```bash
 ./script/prepare_promo_capture.sh \
-  --volume "/Volumes/Untitled" \
-  --run-id "build-N-take-1"
+  --volume "/Volumes/Sample Card" \
+  --collection "Coastal Weekend" \
+  --first-photo 25 --first-video 4 \
+  --run-id "capture-audit-01"
 ```
 
 The script:
 
-- refuses `Sandisk 4T` and any volume not named `Untitled`;
+- refuses `Sandisk 4T` and any volume not mounted at `/Volumes/Sample Card`;
 - requires the volume to be reported as removable;
-- creates a new `SDImport-Promo-RUN_ID/DCIM/100PROMO` directory;
+- creates a new `Coastal Weekend/Sample Card/DCIM/100SAMPLE` directory;
 - never deletes or overwrites existing card contents;
-- copies and uniquely renames the 27 synthetic files;
+- copies 24 synthetic photos and 3 synthetic videos as `PHOTO_0025.JPG`
+  through `PHOTO_0048.JPG` and `VIDEO_0004.MOV` through `VIDEO_0006.MOV`;
 - writes a SHA-256 source manifest under the system temporary directory.
 
-Use the printed `SDImport-Promo-RUN_ID` directory as the app's source. A new run
-ID is required for every retake so the preview starts with new files even when
-the app's import history is retained.
+Use the printed directory ending in `Sample Card` as the app's source. Choose a
+new human-readable collection and unused photo/video numbers for every retake,
+so the preview starts with new files while retaining import history and existing
+card contents. The run ID is used only for the audit manifest outside the card;
+it must never appear in the app. Verify the dedicated card's volume UUID against
+the current capture preflight before running the preparation script.
 
 ## App preflight before recording
 
 1. Verify the installed app build and quit any other SD Import copy.
-2. Select `~/Pictures/SD Import Library` through the macOS folder picker. Do not
+2. Select `/Users/Shared/SD Import Library` through the macOS folder picker. Do not
    type or inject the path directly; the Mac App Store build needs a real
    security-scoped bookmark.
 3. Set **Photos + Videos**, **Same Library**, **By Capture Date**, and
    `Sample Shoot`, then choose **Use as Defaults**.
 4. Select the new run-specific source without scanning it.
-5. Return to a clean source-ready state, safely eject `Untitled`, and quit the
+5. Return to a clean source-ready state, safely eject `Sample Card`, and quit the
    main app. Do not clear import history or other user data.
 6. Confirm the background helper is running so physical insertion can wake the
    app.
 
 This preflight may require one setup insertion followed by a physical
 remove/reinsert for the final recording.
+
+Use the shared destination consistently in review, copying, receipt, and video.
+It contains no account name and works with the installed App Store build's
+existing path display. Preserve previous capture imports in the user's Pictures
+directory; a retake does not require moving or deleting them.
+
+## Screenshot capture
+
+Capture permission, active scanning, review, copying, receipt followed by safe
+eject, and optionally a Nothing New rescan directly from the app window. Use
+one fixed window size and light appearance. For example, after reading the
+current main-window ID:
+
+```bash
+screencapture -x -o -l "$WINDOW_ID" /private/tmp/sd-import-window.png
+```
+
+Do not extract final screenshots from the video. Native PNGs must retain real
+transparent corners and exclude the cursor. Verify full-resolution content and
+all four corners, then create separate opaque 2560x1600 App Store compositions
+on a consistent neutral background. A modal permission sheet may genuinely
+disable the red close control; preserve that state.
+
+Computer Use can place a purple remote-control indicator over the traffic
+lights. A capture containing it is provisional. Excluding attached windows,
+AX Raise, zoom, or single-window CoreGraphics capture did not remove it in the
+September 5 session. Physical foreground activation did. Resolve this before a
+retained video take; do not paint traffic lights over the indicator or replace
+the title bar with another frame.
 
 ## Native recording
 
@@ -188,3 +223,53 @@ Before touching website assets:
 7. Show the `/private/tmp` preview to the user and wait for approval.
 
 Only after approval should the preview replace website media or be committed.
+
+## September 5 capture findings
+
+The review package uses the original installed Mac App Store edition, version
+1.0 build 5, with `/Users/Shared/SD Import Library` as the authorized destination.
+Native screenshots are 3024×1896 with transparent corners. Separate 2560×1600
+App Store compositions place them on `#F2F3F5` with a 2360×1480 maximum inner size.
+Keep original PNG bytes; never repaint the title bar or controls. A permission
+sheet legitimately disables the red close button.
+
+For the fixed window at `(0, 34, 1512, 948)` points, region recording preserves
+the genuine title bar without the extra shadow and sharing indicator observed
+with window-video capture:
+
+```bash
+screencapture -v -C -R0,34,1512,948 -V 120 /private/tmp/sd-import-promo-raw.mov
+```
+
+Let the bounded recording finish naturally. In this environment, sending
+SIGINT cancelled and discarded a recording instead of saving it. Region capture
+records whatever becomes foreground, including the Dock; coordinate an idle
+interval and inspect the saved frames. After Computer Use, quitting and
+reopening SD Import cleared a lingering purple sharing indicator. Recheck the
+selected source and its permission after reopening before starting a take.
+Native input was used only after the user specifically approved that method.
+
+The September 5 review video retains raw seconds 2–34 at normal speed and then
+cuts to four seconds of separately recorded safe-eject confirmation. It includes
+real card detection, permission, scan, review, copy, and receipt. The eject click
+itself fell outside the saved recording, so this candidate does not satisfy the
+continuous eject-action check above. Disclose that cut during review; do not
+fabricate an eject click or add a highlight for it. The two genuine recorded
+clicks receive short highlights at output seconds 9.0 and 17.45.
+
+The approved website version, `sd-import-screencast-light-20260905-v2.mp4`,
+retains only the first 28 seconds of that candidate and ends on the successful
+copy receipt. The final eight seconds, including the separate safe-eject ending,
+were removed after review. The original 36-second candidate remains preserved.
+
+Use the native window alpha as the video's corner mask and alpha-composite onto
+the neutral background. Do not use a YUV mask blend that also changes the app's
+colors. Window-region inputs already exclude the menu bar; use `--crop-top 0`
+with the single-input postprocessor.
+
+The gallery also includes earlier genuine scan and dedup captures from separate
+synthetic collections on Sample Card. Retain their source paths and provenance;
+do not present the whole gallery as one uninterrupted import. All 27 files in
+the latest import matched source SHA-256 hashes, and the actual receipt showed
+zero failures. OCR omitted some lone zero glyphs, so verify receipt numbers
+against the actual image before taking the next action.
