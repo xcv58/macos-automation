@@ -1,418 +1,755 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en" data-theme="system">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="icon" type="image/png" sizes="32x32" href="assets/images/favicon-32.png">
-    <link rel="icon" type="image/png" sizes="16x16" href="assets/images/favicon-16.png">
-    <link rel="apple-touch-icon" href="assets/images/app-icon.png">
-    <link rel="preload" as="image" href="assets/images/sd-import-review-import-light-20260905-1200.webp" imagesrcset="assets/images/sd-import-review-import-light-20260905-640.webp 640w, assets/images/sd-import-review-import-light-20260905-1200.webp 1200w, assets/images/sd-import-review-import-light-20260905-1920.webp 1920w" imagesizes="(max-width: 460px) calc(100vw - 32px), (max-width: 860px) calc(100vw - 40px), 1060px">
-    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
-    <meta name="theme-color" content="#0f0f12" media="(prefers-color-scheme: dark)">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="32x32"
+      href="assets/images/favicon-32.png"
+    />
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="16x16"
+      href="assets/images/favicon-16.png"
+    />
+    <link rel="apple-touch-icon" href="assets/images/app-icon.png" />
+    <link
+      rel="preload"
+      as="image"
+      href="assets/images/sd-import-review-import-light-20260905-1200.webp"
+      imagesrcset="assets/images/sd-import-review-import-light-20260905-640.webp 640w, assets/images/sd-import-review-import-light-20260905-1200.webp 1200w, assets/images/sd-import-review-import-light-20260905-1920.webp 1920w"
+      imagesizes="(max-width: 460px) calc(100vw - 32px), (max-width: 860px) calc(100vw - 40px), 1060px"
+    />
+    <meta
+      name="theme-color"
+      content="#ffffff"
+      media="(prefers-color-scheme: light)"
+    />
+    <meta
+      name="theme-color"
+      content="#0f0f12"
+      media="(prefers-color-scheme: dark)"
+    />
     <script>
-        document.documentElement.setAttribute("data-theme", localStorage.getItem("theme") || "system");
+      try {
+        const t = localStorage.getItem("theme");
+        if (["light", "dark", "system"].includes(t))
+          document.documentElement.dataset.theme = t;
+      } catch {}
     </script>
-    <title>SD Import - Confident photo and video card imports for macOS.</title>
-    <meta name="description" content="SD Import is a free, open-source macOS app for previewing and copying SD-card photos and videos with scan-first planning, dedupe, Sparkle updates, and signed GitHub Releases.">
-    <meta property="og:title" content="SD Import">
-    <meta property="og:description" content="Confident photo and video card imports for macOS.">
-    <meta property="og:type" content="website">
-    <meta property="og:url" content="https://sd.jenny.media/">
-    <meta property="og:image" content="https://sd.jenny.media/assets/images/sd-import-social-20260905.png">
-    <meta property="og:image:width" content="1200">
-    <meta property="og:image:height" content="750">
-    <meta property="og:site_name" content="SD Import">
-    <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="SD Import">
-    <meta name="twitter:description" content="Confident photo and video card imports for macOS.">
-    <meta name="twitter:image" content="https://sd.jenny.media/assets/images/sd-import-social-20260905.png">
-    <link rel="canonical" href="https://sd.jenny.media/">
-    <link rel="stylesheet" href="assets/site-20260905.css">
+    <title>
+      SD Import - Photos and videos, organized from the first import.
+    </title>
+    <meta
+      name="description"
+      content="Import photos and videos from your camera card into organized folders on your Mac. Preview every import and skip files you have already copied. Free direct download."
+    />
+    <meta property="og:title" content="SD Import" />
+    <meta
+      property="og:description"
+      content="Photos and videos, organized from the first import."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://sd.jenny.media/" />
+    <meta
+      property="og:image"
+      content="https://sd.jenny.media/assets/images/sd-import-social-20260905.png"
+    />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="750" />
+    <meta property="og:site_name" content="SD Import" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="SD Import" />
+    <meta
+      name="twitter:description"
+      content="Photos and videos, organized from the first import."
+    />
+    <meta
+      name="twitter:image"
+      content="https://sd.jenny.media/assets/images/sd-import-social-20260905.png"
+    />
+    <link rel="canonical" href="https://sd.jenny.media/" />
+    <link rel="stylesheet" href="assets/site-20260905.css" />
+    <link rel="stylesheet" href="assets/redesign-20260906.css" />
     <script type="application/ld+json">
-        {
-            "@context": "https://schema.org",
-            "@type": "SoftwareApplication",
-            "name": "SD Import",
-            "applicationCategory": "MultimediaApplication",
-            "operatingSystem": "macOS 14 or newer",
-            "softwareRequirements": "Apple Silicon Mac",
-            "description": "A free, open-source macOS app for scan-first SD-card photo and video imports with previewed destinations.",
-            "image": "https://sd.jenny.media/assets/images/sd-import-social-20260905.png",
-            "downloadUrl": "https://github.com/xcv58/sd-import/releases/latest/download/SD-Import.dmg",
-            "license": "https://github.com/xcv58/sd-import/blob/master/LICENSE",
-            "isAccessibleForFree": true
-        }
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "SD Import",
+        "applicationCategory": "MultimediaApplication",
+        "operatingSystem": "macOS 14 or newer",
+        "softwareRequirements": "Apple Silicon Mac",
+        "description": "Import photos and videos from camera cards into organized folders on your Mac, with a preview before copying and recognition of previous imports.",
+        "image": "https://sd.jenny.media/assets/images/sd-import-social-20260905.png",
+        "downloadUrl": "https://github.com/xcv58/sd-import/releases/latest/download/SD-Import.dmg",
+        "license": "https://github.com/xcv58/sd-import/blob/master/LICENSE",
+        "isAccessibleForFree": true
+      }
     </script>
-</head>
-<body class="preload">
+  </head>
+  <body class="preload home-page">
     <a class="skip-link" href="#main">Skip to content</a>
     <div class="container">
-        <header class="site-header">
-            <a class="logo" href="index.html" aria-label="SD Import home">
-                <img src="assets/images/app-icon-72-20260512.webp" width="36" height="36" alt="">
-                <span>SD Import</span>
-            </a>
-            <div class="nav-wrapper">
-                <nav class="nav-links" aria-label="Primary">
-                    <a href="#how-to-use">How to use</a>
-                    <a href="user-guide.html">Guide</a>
-                    <a href="#workflow">Workflow</a>
-                    <a href="install.html">Install</a>
-                    <a href="support.html">Support</a>
-                    <a href="https://github.com/xcv58/sd-import">GitHub</a>
-                </nav>
-                <div class="theme-switch" role="group" aria-label="Theme">
-                    <button class="theme-btn" type="button" data-theme-value="system" aria-label="System theme" title="System theme"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg><span>System</span></button>
-                    <button class="theme-btn" type="button" data-theme-value="light" aria-label="Light theme" title="Light theme"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg><span>Light</span></button>
-                    <button class="theme-btn" type="button" data-theme-value="dark" aria-label="Dark theme" title="Dark theme"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg><span>Dark</span></button>
-                </div>
-            </div>
-        </header>
+      <header class="site-header">
+        <a class="logo" href="index.html" aria-label="SD Import home"
+          ><img
+            src="assets/images/app-icon-72-20260512.webp"
+            width="36"
+            height="36"
+            alt=""
+          /><span>SD Import</span></a
+        >
+        <nav class="nav-links" aria-label="Primary">
+          <a href="#features">Why SD Import</a
+          ><a href="#workflow">See it work</a><a href="user-guide.html">Guide</a
+          ><a class="nav-download" href="#download"
+            >Download
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5 12h14m-5-5 5 5-5 5" /></svg
+          ></a>
+        </nav>
+      </header>
     </div>
-
     <main id="main">
-        <section class="hero container">
-            <h1>Import the card. Keep the originals straight.</h1>
-            <p class="hero-copy">Finish messy card handoffs with confidence.</p>
-            <div class="cta-group">
-                <a class="cta-button cta-primary" href="https://github.com/xcv58/sd-import/releases/latest/download/SD-Import.dmg">Download for Apple Silicon Mac</a>
-                <a class="cta-button cta-secondary" href="#workflow">Watch Workflow</a>
-            </div>
-            <p class="cta-note">Free, open source, signed and notarized. Requires an Apple Silicon Mac running macOS 14 or newer.</p>
-
-            <div class="hero-use-case">
-                <span>After-shoot card copy</span>
-                <span>RAW, JPEG, video, and camera metadata</span>
-                <span>Repeat imports without duplicates</span>
-            </div>
-
-            <div class="hero-visual">
-                <picture class="hero-visual-picture">
-                    <source type="image/webp" srcset="assets/images/sd-import-review-import-light-20260905-640.webp 640w, assets/images/sd-import-review-import-light-20260905-1200.webp 1200w, assets/images/sd-import-review-import-light-20260905-1920.webp 1920w" sizes="(max-width: 460px) calc(100vw - 32px), (max-width: 860px) calc(100vw - 40px), 1060px">
-                    <img class="hero-screenshot" src="assets/images/sd-import-review-import-light-20260905.png" width="3024" height="1896" fetchpriority="high" decoding="async" alt="SD Import review screen showing 27 sample photos and videos, the Sample Shoot name, destination folders in SD Import Library, file previews, and the Import 27 Files action.">
-                </picture>
-            </div>
-        </section>
-
-        <section class="section section-divider" id="workflow">
-            <div class="container media-layout">
-                <div class="section-header">
-                    <h2>See the whole copy path.</h2>
-                    <p>Watch a real mixed-card import from card detection to a successful copy receipt.</p>
-                </div>
-                <div class="media-grid">
-                    <figure class="media-frame">
-                        <div class="lite-video-player" data-video-player>
-                            <video playsinline muted preload="metadata" width="1920" height="1204" poster="assets/images/sd-import-screencast-poster-light-20260905-v2.webp" aria-describedby="screencast-caption">
-                                <source src="assets/media/sd-import-screencast-light-20260905-v2.mp4" type="video/mp4">
-                                Your browser does not support the SD Import screencast.
-                            </video>
-                            <button class="video-overlay-play" type="button" data-video-overlay aria-label="Play screencast">
-                                <svg viewBox="0 0 24 24" aria-hidden="true">
-                                    <path d="M8 5v14l11-7Z"></path>
-                                </svg>
-                            </button>
-                            <div class="lite-video-controls" aria-label="Screencast controls">
-                                <button class="video-control video-play-toggle" type="button" data-video-play aria-label="Play screencast">
-                                    <svg class="icon-play" viewBox="0 0 24 24" aria-hidden="true">
-                                        <path d="M8 5v14l11-7Z"></path>
-                                    </svg>
-                                    <svg class="icon-pause" viewBox="0 0 24 24" aria-hidden="true">
-                                        <path d="M8 5v14M16 5v14"></path>
-                                    </svg>
-                                </button>
-                                <span class="video-time" data-video-current>0:00</span>
-                                <div class="video-scrubber" data-video-scrubber role="slider" tabindex="0" aria-label="Screencast timeline" aria-valuemin="0" aria-valuemax="1000" aria-valuenow="0" aria-valuetext="0:00">
-                                    <span class="video-scrubber-track">
-                                        <span class="video-scrubber-fill" data-video-progress></span>
-                                    </span>
-                                </div>
-                                <span class="video-time" data-video-duration>0:00</span>
-                            </div>
-                        </div>
-                        <details class="video-transcript">
-                            <summary>Screencast steps</summary>
-                            <ol>
-                                <li>Inserting a removable card wakes SD Import and asks permission before scanning.</li>
-                                <li>The live scan counts the card's photos and videos without copying anything.</li>
-                                <li>The review confirms 27 files, <strong>Sample Shoot</strong>, and the selected SD Import Library destination.</li>
-                                <li>The copy monitor shows continuous transfer progress for the synthetic sample media.</li>
-                                <li>The receipt confirms 27 copied files and zero failures, with an option to safely eject the card.</li>
-                            </ol>
-                        </details>
-                        <figcaption id="screencast-caption">28 seconds in the real app: detect, scan, review, copy, and confirm the receipt.</figcaption>
-                    </figure>
-                    <figure class="media-frame">
-                        <a href="assets/images/sd-import-card-permission-light-20260905.png" aria-label="View full-resolution card permission screenshot">
-                            <picture>
-                                <source type="image/webp" srcset="assets/images/sd-import-card-permission-light-20260905-640.webp 640w, assets/images/sd-import-card-permission-light-20260905-1200.webp 1200w, assets/images/sd-import-card-permission-light-20260905-1920.webp 1920w" sizes="(max-width: 860px) calc(100vw - 40px), 709px">
-                                <img src="assets/images/sd-import-card-permission-light-20260905.png" width="3024" height="1896" loading="lazy" decoding="async" alt="SD Import detects Sample Card and asks permission before scanning.">
-                            </picture>
-                        </a>
-                        <figcaption>01 — Give permission. A newly detected card is scanned only when you allow it.</figcaption>
-                    </figure>
-                    <figure class="media-frame">
-                        <a href="assets/images/sd-import-active-scanning-light-20260905.png" aria-label="View full-resolution active scanning screenshot">
-                            <picture>
-                                <source type="image/webp" srcset="assets/images/sd-import-active-scanning-light-20260905-640.webp 640w, assets/images/sd-import-active-scanning-light-20260905-1200.webp 1200w, assets/images/sd-import-active-scanning-light-20260905-1920.webp 1920w" sizes="(max-width: 860px) calc(100vw - 40px), 709px">
-                                <img src="assets/images/sd-import-active-scanning-light-20260905.png" width="3024" height="1896" loading="lazy" decoding="async" alt="SD Import actively scans Sample Card before copying any files.">
-                            </picture>
-                        </a>
-                        <figcaption>02 — Scan first. Read the media and check previous imports before copying.</figcaption>
-                    </figure>
-                    <figure class="media-frame">
-                        <a href="assets/images/sd-import-review-import-light-20260905.png" aria-label="View full-resolution review import screenshot">
-                            <picture>
-                                <source type="image/webp" srcset="assets/images/sd-import-review-import-light-20260905-640.webp 640w, assets/images/sd-import-review-import-light-20260905-1200.webp 1200w, assets/images/sd-import-review-import-light-20260905-1920.webp 1920w" sizes="(max-width: 860px) calc(100vw - 40px), 709px">
-                                <img src="assets/images/sd-import-review-import-light-20260905.png" width="3024" height="1896" loading="lazy" decoding="async" alt="SD Import reviews 27 synthetic files with thumbnails, Sample Shoot, Photos + Videos, capture-date folders, and /Users/Shared/SD Import Library.">
-                            </picture>
-                        </a>
-                        <figcaption>03 — Review the plan. Preview 27 files, their thumbnails, and the destination folders.</figcaption>
-                    </figure>
-                    <figure class="media-frame">
-                        <a href="assets/images/sd-import-copy-progress-light-20260905.png" aria-label="View full-resolution copy progress screenshot">
-                            <picture>
-                                <source type="image/webp" srcset="assets/images/sd-import-copy-progress-light-20260905-640.webp 640w, assets/images/sd-import-copy-progress-light-20260905-1200.webp 1200w, assets/images/sd-import-copy-progress-light-20260905-1920.webp 1920w" sizes="(max-width: 860px) calc(100vw - 40px), 709px">
-                                <img src="assets/images/sd-import-copy-progress-light-20260905.png" width="3024" height="1896" loading="lazy" decoding="async" alt="SD Import at 40 percent copy progress, showing transfer speed, remaining time, recent files, and destinations in /Users/Shared/SD Import Library.">
-                            </picture>
-                        </a>
-                        <figcaption>04 — Follow the copy. See live progress, speed, remaining time, and recent files.</figcaption>
-                    </figure>
-                    <figure class="media-frame">
-                        <a href="assets/images/sd-import-copy-receipt-light-20260905.png" aria-label="View full-resolution copy receipt screenshot">
-                            <picture>
-                                <source type="image/webp" srcset="assets/images/sd-import-copy-receipt-light-20260905-640.webp 640w, assets/images/sd-import-copy-receipt-light-20260905-1200.webp 1200w, assets/images/sd-import-copy-receipt-light-20260905-1920.webp 1920w" sizes="(max-width: 860px) calc(100vw - 40px), 709px">
-                                <img src="assets/images/sd-import-copy-receipt-light-20260905.png" width="3024" height="1896" loading="lazy" decoding="async" alt="SD Import successful receipt showing 27 copied files, 996.3 MB, zero skipped files, and zero failures.">
-                            </picture>
-                        </a>
-                        <figcaption>05 — Confirm the result. The receipt shows 27 copied files and zero failures.</figcaption>
-                    </figure>
-                    <figure class="media-frame">
-                        <a href="assets/images/sd-import-safe-eject-light-20260905.png" aria-label="View full-resolution safe eject screenshot">
-                            <picture>
-                                <source type="image/webp" srcset="assets/images/sd-import-safe-eject-light-20260905-640.webp 640w, assets/images/sd-import-safe-eject-light-20260905-1200.webp 1200w, assets/images/sd-import-safe-eject-light-20260905-1920.webp 1920w" sizes="(max-width: 860px) calc(100vw - 40px), 709px">
-                                <img src="assets/images/sd-import-safe-eject-light-20260905.png" width="3024" height="1896" loading="lazy" decoding="async" alt="SD Import receipt with the green Sample Card Ejected — Safe to Remove confirmation.">
-                            </picture>
-                        </a>
-                        <figcaption>06 — Eject safely. Wait for the confirmation that Sample Card is ready to remove.</figcaption>
-                    </figure>
-                    <figure class="media-frame">
-                        <a href="assets/images/sd-import-nothing-new-light-20260905.png" aria-label="View full-resolution nothing new screenshot">
-                            <picture>
-                                <source type="image/webp" srcset="assets/images/sd-import-nothing-new-light-20260905-640.webp 640w, assets/images/sd-import-nothing-new-light-20260905-1200.webp 1200w, assets/images/sd-import-nothing-new-light-20260905-1920.webp 1920w" sizes="(max-width: 860px) calc(100vw - 40px), 709px">
-                                <img src="assets/images/sd-import-nothing-new-light-20260905.png" width="3024" height="1896" loading="lazy" decoding="async" alt="SD Import rescan showing Nothing New, 27 known files, and zero files to copy.">
-                            </picture>
-                        </a>
-                        <figcaption>07 — Skip repeat copies. A later scan recognizes files that are already imported.</figcaption>
-                    </figure>
-                </div>
-            </div>
-        </section>
-
-        <section class="section section-divider" id="how-to-use">
-            <div class="container two-column">
-                <div class="section-header">
-                    <h2>How it works</h2>
-                    <p>Designed for repeat card imports, not one-off file browsing.</p>
-                </div>
-                <ol class="workflow-steps">
-                    <li>
-                        <span class="step-number">1</span>
-                        <div>
-                            <h3>Choose a source.</h3>
-                            <p>Use the automatic card prompt or manually select a mounted card, folder, or test source.</p>
-                        </div>
-                    </li>
-                    <li>
-                        <span class="step-number">2</span>
-                        <div>
-                            <h3>Scan and choose what copies.</h3>
-                            <p>Choose photos, videos, or both. Send them to one library or separate folders.</p>
-                        </div>
-                    </li>
-                    <li>
-                        <span class="step-number">3</span>
-                        <div>
-                            <h3>Review the plan.</h3>
-                            <p>Check new files, already-copied originals, camera metadata sidecars, conflicts, and required space in one screen.</p>
-                        </div>
-                    </li>
-                    <li>
-                        <span class="step-number">4</span>
-                        <div>
-                            <h3>Copy once. Reinsert safely.</h3>
-                            <p>After import, repeat scans show originals you already copied so the same card does not duplicate work.</p>
-                        </div>
-                    </li>
-                </ol>
-            </div>
-        </section>
-
-        <section class="section section-divider">
-            <div class="container">
-                <div class="section-header">
-                    <h2>Built for repeat imports.</h2>
-                    <p>SD Import keeps the checks that matter visible before files move.</p>
-                </div>
-                <div class="grid">
-                    <article class="card">
-                        <h3>Preview before copying</h3>
-                        <p>Scan the card, review what will copy, and inspect destination folders before starting the import.</p>
-                    </article>
-                    <article class="card">
-                        <h3>Skip files you already copied</h3>
-                        <p>Reinsert the same card without duplicating originals that SD Import has already imported.</p>
-                    </article>
-                    <article class="card">
-                        <h3>Keep metadata files visible</h3>
-                        <p>Camera support files stay visible in the preview, so sidecars and unsupported files do not disappear into the copy silently.</p>
-                    </article>
-                </div>
-            </div>
-        </section>
-
-        <section class="section section-divider" id="use-cases">
-            <div class="container two-column">
-                <div class="section-header">
-                    <h2>Handles messy cards.</h2>
-                    <p>Mixed media, support files, repeated card names, and copied originals stay explicit.</p>
-                </div>
-                <div class="use-case-list">
-                    <div class="use-case-row">
-                        <strong>Photo import</strong>
-                        <span>RAW and JPEG files are treated as photos and grouped into dated shoot folders.</span>
-                    </div>
-                    <div class="use-case-row">
-                        <strong>Video import</strong>
-                        <span>Video files can use their own destination folder while staying part of the same scanned import plan.</span>
-                    </div>
-                    <div class="use-case-row">
-                        <strong>Repeat cards</strong>
-                        <span>Already-copied files stay visible and skipped, so reinserting a card does not create duplicates.</span>
-                    </div>
-                    <div class="use-case-row">
-                        <strong>Nothing to copy</strong>
-                        <span>The preview explains whether files were already copied, excluded by media type, camera metadata sidecars, or unsupported.</span>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <section class="section section-divider">
-            <div class="container two-column">
-                <div class="section-header">
-                    <h2>Free, signed, and updateable.</h2>
-                    <p>Releases are signed, notarized DMGs on GitHub. Sparkle handles in-app updates.</p>
-                </div>
-                <nav class="resource-list" aria-label="Release resources">
-                    <a class="resource-link" href="install.html">
-                        <span class="resource-icon" aria-hidden="true">
-                            <svg viewBox="0 0 24 24">
-                                <path d="M12 3v10"></path>
-                                <path d="m8 9 4 4 4-4"></path>
-                                <path d="M5 17v1.5A2.5 2.5 0 0 0 7.5 21h9a2.5 2.5 0 0 0 2.5-2.5V17"></path>
-                            </svg>
-                        </span>
-                        <span class="resource-copy">
-                            <strong>Install the latest release</strong>
-                            <span>Download the signed DMG for Apple Silicon Macs.</span>
-                        </span>
-                        <span class="resource-arrow" aria-hidden="true">
-                            <svg viewBox="0 0 24 24">
-                                <path d="m9 18 6-6-6-6"></path>
-                            </svg>
-                        </span>
-                    </a>
-                    <a class="resource-link" href="user-guide.html">
-                        <span class="resource-icon" aria-hidden="true">
-                            <svg viewBox="0 0 24 24">
-                                <path d="M5 4.5h10.5L19 8v11.5H5z"></path>
-                                <path d="M15.5 4.5V8H19"></path>
-                                <path d="M8 12h8"></path>
-                                <path d="M8 15.5h6"></path>
-                            </svg>
-                        </span>
-                        <span class="resource-copy">
-                            <strong>Setup guide</strong>
-                            <span>Grant folder access and run your first import.</span>
-                        </span>
-                        <span class="resource-arrow" aria-hidden="true">
-                            <svg viewBox="0 0 24 24">
-                                <path d="m9 18 6-6-6-6"></path>
-                            </svg>
-                        </span>
-                    </a>
-                    <a class="resource-link" href="updates.html">
-                        <span class="resource-icon" aria-hidden="true">
-                            <svg viewBox="0 0 24 24">
-                                <path d="M20 7v5h-5"></path>
-                                <path d="M4 17v-5h5"></path>
-                                <path d="M6.1 9A7 7 0 0 1 18.3 6.8L20 7"></path>
-                                <path d="M17.9 15A7 7 0 0 1 5.7 17.2L4 17"></path>
-                            </svg>
-                        </span>
-                        <span class="resource-copy">
-                            <strong>Verify updates</strong>
-                            <span>Check Sparkle update feeds and signatures.</span>
-                        </span>
-                        <span class="resource-arrow" aria-hidden="true">
-                            <svg viewBox="0 0 24 24">
-                                <path d="m9 18 6-6-6-6"></path>
-                            </svg>
-                        </span>
-                    </a>
-                    <a class="resource-link" href="support.html">
-                        <span class="resource-icon" aria-hidden="true">
-                            <svg viewBox="0 0 24 24">
-                                <circle cx="12" cy="12" r="8"></circle>
-                                <path d="M10.3 9.4A2.2 2.2 0 0 1 12 8.7c1.3 0 2.2.8 2.2 2 0 1.7-2.2 1.8-2.2 3.3"></path>
-                                <path d="M12 17h.01"></path>
-                            </svg>
-                        </span>
-                        <span class="resource-copy">
-                            <strong>Get support</strong>
-                            <span>Find diagnostics, logs, and issue-report steps.</span>
-                        </span>
-                        <span class="resource-arrow" aria-hidden="true">
-                            <svg viewBox="0 0 24 24">
-                                <path d="m9 18 6-6-6-6"></path>
-                            </svg>
-                        </span>
-                    </a>
-                    <a class="resource-link" href="privacy.html">
-                        <span class="resource-icon" aria-hidden="true">
-                            <svg viewBox="0 0 24 24">
-                                <path d="M12 3 5 6v5c0 4.4 2.9 8.5 7 10 4.1-1.5 7-5.6 7-10V6z"></path>
-                                <path d="m9.5 12 1.7 1.7 3.5-4"></path>
-                            </svg>
-                        </span>
-                        <span class="resource-copy">
-                            <strong>Privacy policy</strong>
-                            <span>Understand local-first imports and stored history.</span>
-                        </span>
-                        <span class="resource-arrow" aria-hidden="true">
-                            <svg viewBox="0 0 24 24">
-                                <path d="m9 18 6-6-6-6"></path>
-                            </svg>
-                        </span>
-                    </a>
-                </nav>
-            </div>
-        </section>
-    </main>
-
-    <footer class="site-footer">
-        <div class="container">
-            <div>SD Import is free and open source under the MIT License.</div>
-            <div class="footer-links">
-                <a href="privacy.html">Privacy</a>
-                <a href="eula.html">EULA</a>
-                <a href="user-guide.html">Guide</a>
-                <a href="support.html">Support</a>
-                <a href="https://github.com/xcv58/sd-import">GitHub</a>
-            </div>
+      <section class="intro container" aria-labelledby="intro-title">
+        <p class="eyebrow">
+          <span class="status-dot"></span> A little order after every shoot
+        </p>
+        <h1 id="intro-title">
+          From camera card<br />to <em>organized folders.</em>
+        </h1>
+        <p class="intro-copy">
+          Bring your photos and videos home. Preview what will copy,<br
+            class="desktop-break"
+          />
+          choose where it goes, and skip what you’ve already imported.
+        </p>
+        <div class="intro-actions">
+          <a
+            class="action action-primary"
+            href="https://github.com/xcv58/sd-import/releases/latest/download/SD-Import.dmg"
+            ><svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 3v12m-5-5 5 5 5-5M5 17v4h14v-4" />
+            </svg>
+            Download for Mac</a
+          ><a class="action action-text" href="#workflow"
+            ><svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m9 5 11 7-11 7Z" />
+            </svg>
+            Watch the 28-second demo</a
+          >
         </div>
+        <p class="compatibility">
+          Free &amp; open source <span aria-hidden="true">·</span> Apple Silicon
+          <span aria-hidden="true">·</span> macOS 14+
+        </p>
+        <div class="product-stage">
+          <div class="stage-label">
+            <span>YOUR NEXT IMPORT, AT A GLANCE</span
+            ><span class="stage-route"
+              >Card <span aria-hidden="true">→</span> Preview
+              <span aria-hidden="true">→</span> Library</span
+            >
+          </div>
+          <picture class="product-window"
+            ><source
+              type="image/webp"
+              srcset="
+                assets/images/sd-import-review-import-light-20260905-640.webp   640w,
+                assets/images/sd-import-review-import-light-20260905-1200.webp 1200w,
+                assets/images/sd-import-review-import-light-20260905-1920.webp 1920w
+              "
+              sizes="(max-width: 700px) calc(100vw - 48px), 1000px" />
+            <img
+              src="assets/images/sd-import-review-import-light-20260905.png"
+              width="3024"
+              height="1896"
+              alt="SD Import reviewing 27 photos and videos, with file thumbnails and destination folders visible before importing."
+              fetchpriority="high"
+              decoding="async"
+          /></picture>
+          <p class="stage-note">
+            <span class="status-dot"></span> Review first. Copy when you’re
+            ready.
+          </p>
+        </div>
+        <div class="format-line">
+          <span>Made for what you shoot</span><span>RAW</span><span>JPEG</span
+          ><span>VIDEO</span><span>CAMERA METADATA</span>
+        </div>
+      </section>
+      <section
+        class="benefits container"
+        id="features"
+        aria-labelledby="benefits-title"
+      >
+        <div class="section-heading">
+          <p class="eyebrow">A clearer way to import</p>
+          <h2 id="benefits-title">
+            Less sorting.<br />More getting on with it.
+          </h2>
+          <p>The useful checks, right where you need them.</p>
+        </div>
+        <div class="benefit-grid">
+          <article class="benefit-card">
+            <span class="benefit-number">01 / PREVIEW</span>
+            <h3>Know what<br />will copy.</h3>
+            <p>
+              See new files, previous imports, and destination folders before
+              you start.
+            </p>
+            <div class="benefit-proof preview-proof">
+              <span class="proof-label">A plan you can check</span>
+              <div><strong>27 files</strong><span>ready to import</span></div>
+              <div class="proof-rule"></div>
+              <p>
+                Photos + Videos <span aria-hidden="true">→</span> Your library
+              </p>
+              <span class="proof-footnote"
+                >From the sample import shown below</span
+              >
+            </div>
+          </article>
+          <article class="benefit-card">
+            <span class="benefit-number">02 / ORGANIZE</span>
+            <h3>A place for<br />every shoot.</h3>
+            <p>
+              Group files by capture date. Keep photos and videos together, or
+              give each its own destination.
+            </p>
+            <div
+              class="benefit-proof folder-proof"
+              role="group"
+              aria-label="Example folder organization"
+            >
+              <span class="proof-label">Your folders, your way</span>
+              <div class="folder-line">
+                <span aria-hidden="true">▱</span> Photo Library
+              </div>
+              <div class="folder-children">
+                <div><span aria-hidden="true">▱</span> Coastal Weekend</div>
+                <div><span aria-hidden="true">▱</span> Mountain Morning</div>
+              </div>
+              <span class="proof-footnote">Example shoot names</span>
+            </div>
+          </article>
+          <article class="benefit-card">
+            <span class="benefit-number">03 / REMEMBER</span>
+            <h3>Same card.<br />Only new files.</h3>
+            <p>
+              SD Import remembers previous imports, so the next scan can focus
+              on what’s new.
+            </p>
+            <div class="benefit-proof repeat-proof">
+              <span class="proof-label">On a repeat scan</span
+              ><span class="check-mark" aria-hidden="true">✓</span
+              ><strong>Nothing New</strong
+              ><span>27 known files. Zero to copy.</span
+              ><span class="proof-footnote"
+                >From our sample card’s repeat scan</span
+              >
+            </div>
+          </article>
+        </div>
+      </section>
+      <section class="demo-section" id="workflow" aria-labelledby="demo-title">
+        <div class="container">
+          <div class="demo-heading">
+            <div>
+              <p class="eyebrow">See it work</p>
+              <h2 id="demo-title">One card. A clear finish.</h2>
+            </div>
+            <p>
+              Follow a real import from card detection<br
+                class="desktop-break"
+              />
+              to the final copy receipt. Just 28 seconds.
+            </p>
+          </div>
+          <figure class="media-frame demo-video">
+            <div class="lite-video-player" data-video-player>
+              <video
+                aria-label="Silent demonstration of an SD Import card import"
+                playsinline
+                muted
+                preload="metadata"
+                width="1920"
+                height="1204"
+                poster="assets/images/sd-import-screencast-poster-light-20260905-v2.webp"
+                aria-describedby="screencast-caption"
+                controls
+              >
+                <source
+                  src="assets/media/sd-import-screencast-light-20260905-v2.mp4"
+                  type="video/mp4"
+                />
+                Your browser does not support the SD Import screencast.
+              </video>
+              <button
+                class="video-overlay-play"
+                hidden
+                type="button"
+                data-video-overlay
+                aria-label="Play screencast"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M8 5v14l11-7Z"></path>
+                </svg>
+              </button>
+              <div
+                class="lite-video-controls"
+                hidden
+                role="group"
+                aria-label="Screencast controls"
+              >
+                <button
+                  class="video-control video-play-toggle"
+                  type="button"
+                  data-video-play
+                  aria-label="Play screencast"
+                >
+                  <svg class="icon-play" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M8 5v14l11-7Z"></path>
+                  </svg>
+                  <svg
+                    class="icon-pause"
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                  >
+                    <path d="M8 5v14M16 5v14"></path>
+                  </svg>
+                </button>
+                <span class="video-time" data-video-current>0:00</span>
+                <div
+                  class="video-scrubber"
+                  data-video-scrubber
+                  role="slider"
+                  tabindex="0"
+                  aria-label="Screencast timeline"
+                  aria-valuemin="0"
+                  aria-valuemax="1000"
+                  aria-valuenow="0"
+                  aria-valuetext="0:00"
+                >
+                  <span class="video-scrubber-track">
+                    <span
+                      class="video-scrubber-fill"
+                      data-video-progress
+                    ></span>
+                  </span>
+                </div>
+                <span class="video-time" data-video-duration>0:00</span>
+              </div>
+            </div>
+            <details class="video-transcript">
+              <summary>Screencast steps</summary>
+              <ol>
+                <li>
+                  Inserting a removable card wakes SD Import and asks permission
+                  before scanning.
+                </li>
+                <li>
+                  The live scan counts the card's photos and videos without
+                  copying anything.
+                </li>
+                <li>
+                  The review confirms 27 files, <strong>Sample Shoot</strong>,
+                  and the selected SD Import Library destination.
+                </li>
+                <li>
+                  The copy monitor shows continuous transfer progress for the
+                  synthetic sample media.
+                </li>
+                <li>
+                  The receipt confirms 27 copied files and zero failures, with
+                  an option to safely eject the card.
+                </li>
+              </ol>
+            </details>
+            <figcaption id="screencast-caption">
+              28 seconds in the real app: detect, scan, review, copy, and
+              confirm the receipt.
+            </figcaption>
+          </figure>
+          <div
+            class="gallery"
+            data-gallery
+            role="region"
+            aria-labelledby="gallery-title"
+          >
+            <div class="gallery-heading">
+              <div>
+                <p class="eyebrow">Take a closer look</p>
+                <h3 id="gallery-title">Every step, in view.</h3>
+              </div>
+              <span class="gallery-count" data-gallery-count aria-live="polite"
+                >03 / 07</span
+              >
+            </div>
+            <div
+              class="gallery-choices"
+              role="group"
+              aria-label="Choose a screenshot"
+            >
+              <a
+                class="gallery-choice"
+                href="assets/images/sd-import-card-permission-light-20260905.png"
+                data-gallery-choice="0"
+                data-title="Your card. Your say."
+                data-caption="A newly detected card is scanned only when you allow it."
+                data-stem="card-permission"
+                aria-label="Show screenshot 1: Permission"
+                ><img
+                  src="assets/images/sd-import-card-permission-light-20260905-640.webp"
+                  width="3024"
+                  height="1896"
+                  alt=""
+                  loading="lazy"
+                /><span><b>01</b> Permission</span></a
+              ><a
+                class="gallery-choice"
+                href="assets/images/sd-import-active-scanning-light-20260905.png"
+                data-gallery-choice="1"
+                data-title="See what’s on the card."
+                data-caption="Scan photos and videos before any files are copied."
+                data-stem="active-scanning"
+                aria-label="Show screenshot 2: Scan"
+                ><img
+                  src="assets/images/sd-import-active-scanning-light-20260905-640.webp"
+                  width="3024"
+                  height="1896"
+                  alt=""
+                  loading="lazy"
+                /><span><b>02</b> Scan</span></a
+              ><a
+                class="gallery-choice"
+                href="assets/images/sd-import-review-import-light-20260905.png"
+                data-gallery-choice="2"
+                data-title="A clear plan before you copy."
+                data-caption="Review the files, shoot name, and destination folders together."
+                data-stem="review-import"
+                aria-label="Show screenshot 3: Review"
+                aria-current="true"
+                ><img
+                  src="assets/images/sd-import-review-import-light-20260905-640.webp"
+                  width="3024"
+                  height="1896"
+                  alt=""
+                  loading="lazy"
+                /><span><b>03</b> Review</span></a
+              ><a
+                class="gallery-choice"
+                href="assets/images/sd-import-copy-progress-light-20260905.png"
+                data-gallery-choice="3"
+                data-title="Follow every import."
+                data-caption="See live progress, transfer speed, and time remaining."
+                data-stem="copy-progress"
+                aria-label="Show screenshot 4: Copy"
+                ><img
+                  src="assets/images/sd-import-copy-progress-light-20260905-640.webp"
+                  width="3024"
+                  height="1896"
+                  alt=""
+                  loading="lazy"
+                /><span><b>04</b> Copy</span></a
+              ><a
+                class="gallery-choice"
+                href="assets/images/sd-import-copy-receipt-light-20260905.png"
+                data-gallery-choice="4"
+                data-title="Know how it finished."
+                data-caption="This sample import copied 27 files with zero failures."
+                data-stem="copy-receipt"
+                aria-label="Show screenshot 5: Receipt"
+                ><img
+                  src="assets/images/sd-import-copy-receipt-light-20260905-640.webp"
+                  width="3024"
+                  height="1896"
+                  alt=""
+                  loading="lazy"
+                /><span><b>05</b> Receipt</span></a
+              ><a
+                class="gallery-choice"
+                href="assets/images/sd-import-safe-eject-light-20260905.png"
+                data-gallery-choice="5"
+                data-title="Ready for the next shoot."
+                data-caption="Wait for the safe-to-remove confirmation before removing your card."
+                data-stem="safe-eject"
+                aria-label="Show screenshot 6: Eject"
+                ><img
+                  src="assets/images/sd-import-safe-eject-light-20260905-640.webp"
+                  width="3024"
+                  height="1896"
+                  alt=""
+                  loading="lazy"
+                /><span><b>06</b> Eject</span></a
+              ><a
+                class="gallery-choice"
+                href="assets/images/sd-import-nothing-new-light-20260905.png"
+                data-gallery-choice="6"
+                data-title="Already imported? Already recognized."
+                data-caption="A later scan recognizes 27 known files, with nothing new to copy."
+                data-stem="nothing-new"
+                aria-label="Show screenshot 7: Repeat"
+                ><img
+                  src="assets/images/sd-import-nothing-new-light-20260905-640.webp"
+                  width="3024"
+                  height="1896"
+                  alt=""
+                  loading="lazy"
+                /><span><b>07</b> Repeat</span></a
+              >
+            </div>
+            <figure class="gallery-current">
+              <a
+                class="gallery-enlarge"
+                href="assets/images/sd-import-review-import-light-20260905.png"
+                data-gallery-open
+                aria-label="Enlarge review screenshot"
+                ><picture class="gallery-picture"
+                  ><source
+                    type="image/webp"
+                    srcset="
+                      assets/images/sd-import-review-import-light-20260905-640.webp   640w,
+                      assets/images/sd-import-review-import-light-20260905-1200.webp 1200w,
+                      assets/images/sd-import-review-import-light-20260905-1920.webp 1920w
+                    "
+                    sizes="(max-width: 700px) calc(100vw - 48px), 1000px" />
+                  <img
+                    src="assets/images/sd-import-review-import-light-20260905.png"
+                    width="3024"
+                    height="1896"
+                    alt="Review the files, shoot name, and destination folders together."
+                    loading="lazy"
+                    decoding="async" /></picture
+                ><span class="enlarge-label"
+                  >View larger <span aria-hidden="true">↗</span></span
+                ></a
+              >
+              <figcaption>
+                <strong data-gallery-title>A clear plan before you copy.</strong
+                ><span data-gallery-caption
+                  >Review the files, shoot name, and destination folders
+                  together.</span
+                >
+              </figcaption>
+            </figure>
+            <p class="gallery-provenance">
+              Real app captures using sample media across several imports.
+            </p>
+          </div>
+        </div>
+      </section>
+      <section
+        class="download-section container"
+        id="download"
+        aria-labelledby="download-title"
+      >
+        <div class="download-panel">
+          <div class="download-copy">
+            <img
+              class="download-icon"
+              src="assets/images/app-icon.png"
+              width="64"
+              height="64"
+              alt=""
+            />
+            <p class="eyebrow">Ready when your card is</p>
+            <h2 id="download-title">Make room<br />for your next shoot.</h2>
+            <p>
+              Get SD Import for your Mac and give every import a clear plan.
+            </p>
+          </div>
+          <div class="download-details">
+            <span class="edition-label">DIRECT DOWNLOAD</span>
+            <p class="download-price">
+              Free<span>Open source. Yours to keep.</span>
+            </p>
+            <a
+              class="action action-primary"
+              href="https://github.com/xcv58/sd-import/releases/latest/download/SD-Import.dmg"
+              ><svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 3v12m-5-5 5 5 5-5M5 17v4h14v-4" />
+              </svg>
+              Download for Mac</a
+            >
+            <p>
+              Apple Silicon Mac · macOS 14 or newer<br />Signed and notarized
+              for macOS.
+            </p>
+            <a class="inline-link" href="install.html"
+              >First time? Read the install guide
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M5 12h14m-5-5 5 5-5 5" /></svg
+            ></a>
+          </div>
+        </div>
+        <div class="trust-line">
+          <span>Your media stays in the folders you choose.</span
+          ><a href="privacy.html"
+            >Read our privacy policy
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5 12h14m-5-5 5 5-5 5" /></svg
+          ></a>
+        </div>
+      </section>
+      <section class="faq-section container" aria-labelledby="faq-title">
+        <div>
+          <p class="eyebrow">A few good questions</p>
+          <h2 id="faq-title">Before you<br />plug in.</h2>
+          <a class="inline-link" href="support.html"
+            >Need a hand?
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5 12h14m-5-5 5 5-5 5" /></svg
+          ></a>
+        </div>
+        <div class="faq-list">
+          <details>
+            <summary>Which photos and videos can I import?</summary>
+            <p>
+              SD Import recognizes common RAW, JPEG, and video formats. The scan
+              also shows camera metadata sidecars and unsupported files, so you
+              can review what is on the card. See the
+              <a href="user-guide.html">guide</a> for the full workflow.
+            </p>
+          </details>
+          <details>
+            <summary>What happens if I import the same card again?</summary>
+            <p>
+              SD Import recognizes files recorded in its import history and
+              skips repeat copies. The review shows what’s new and what’s
+              already imported before you begin.
+            </p>
+          </details>
+          <details>
+            <summary>Where do my files go?</summary>
+            <p>
+              Into the destination folders you choose. You can keep photos and
+              videos together, use separate destinations, and organize by
+              capture date. Review the planned paths before copying.
+            </p>
+          </details>
+          <details>
+            <summary>Does SD Import delete anything from my card?</summary>
+            <p>
+              SD Import copies your media without automatically deleting the
+              originals from the source card. When the import finishes, you can
+              safely eject a supported removable card.
+            </p>
+          </details>
+          <details>
+            <summary>Is SD Import free?</summary>
+            <p>
+              The direct download linked here is free and open source under the
+              MIT License. You can download the signed app or explore the
+              <a href="https://github.com/xcv58/sd-import">source on GitHub</a>.
+            </p>
+          </details>
+          <details>
+            <summary>What do I need to get started?</summary>
+            <p>
+              An Apple Silicon Mac running macOS 14 or newer, a mounted card or
+              source folder, and enough space in your destination. Open the
+              download, drag SD Import to Applications, and choose your folders.
+              The <a href="install.html">install guide</a> walks you through it.
+            </p>
+          </details>
+        </div>
+      </section>
+    </main>
+    <footer class="site-footer">
+      <div class="container footer-main">
+        <a class="logo" href="index.html"
+          ><img
+            src="assets/images/app-icon-72-20260512.webp"
+            width="28"
+            height="28"
+            alt=""
+          /><span>SD Import</span></a
+        >
+        <p>A little order after every shoot.</p>
+        <nav class="footer-links" aria-label="Footer">
+          <a href="user-guide.html">Guide</a><a href="support.html">Support</a
+          ><a href="privacy.html">Privacy</a><a href="eula.html">EULA</a
+          ><a href="https://github.com/xcv58/sd-import">GitHub</a>
+        </nav>
+      </div>
+      <div class="container footer-bottom">
+        <span>Made for the Mac. Open source.</span>
+        <div class="theme-switch" role="group" aria-label="Theme">
+          <button
+            class="theme-btn"
+            type="button"
+            data-theme-value="system"
+            aria-label="System theme"
+            title="System theme"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+              <line x1="8" y1="21" x2="16" y2="21"></line>
+              <line x1="12" y1="17" x2="12" y2="21"></line></svg
+            ><span>System</span>
+          </button>
+          <button
+            class="theme-btn"
+            type="button"
+            data-theme-value="light"
+            aria-label="Light theme"
+            title="Light theme"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="12" r="5"></circle>
+              <line x1="12" y1="1" x2="12" y2="3"></line>
+              <line x1="12" y1="21" x2="12" y2="23"></line>
+              <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+              <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+              <line x1="1" y1="12" x2="3" y2="12"></line>
+              <line x1="21" y1="12" x2="23" y2="12"></line>
+              <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+              <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg
+            ><span>Light</span>
+          </button>
+          <button
+            class="theme-btn"
+            type="button"
+            data-theme-value="dark"
+            aria-label="Dark theme"
+            title="Dark theme"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"
+              ></path></svg
+            ><span>Dark</span>
+          </button>
+        </div>
+      </div>
     </footer>
+    <dialog class="screenshot-dialog" aria-labelledby="dialog-title">
+      <div class="dialog-bar">
+        <h2 id="dialog-title">A clear plan before you copy.</h2>
+        <button type="button" data-gallery-close aria-label="Close screenshot">
+          Close <span aria-hidden="true">×</span>
+        </button>
+      </div>
+      <img
+        data-dialog-image
+        src="assets/images/sd-import-review-import-light-20260905.png"
+        width="3024"
+        height="1896"
+        alt="Review the files, shoot name, and destination folders together."
+        loading="lazy"
+      /><a
+        data-dialog-original
+        href="assets/images/sd-import-review-import-light-20260905.png"
+        target="_blank"
+        rel="noopener"
+        >Open original image <span aria-hidden="true">↗</span></a
+      >
+    </dialog>
     <script src="assets/site-20260512-theme-media.js?v=20260530c"></script>
-</body>
+    <script src="assets/home-20260906.js"></script>
+  </body>
 </html>
